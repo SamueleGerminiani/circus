@@ -3,6 +3,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include <iostream>
+#include <unordered_map>
 
 #include "DBPayload.hh"
 #include "bibtexentry.hpp"
@@ -163,7 +164,7 @@ void printCitations(SQLite::Database& db) {
 void printIndexTerms(SQLite::Database& db) {
   SQLite::Statement query(db, "SELECT * FROM index_term_paper");
   while (query.executeStep()) {
-    std::cout << "Index Term: " << query.getColumn(0)
+    std::cout << "Index Term:" << query.getColumn(0)
               << ", DOI: " << query.getColumn(1) << std::endl;
   }
 }
@@ -237,13 +238,80 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
         payload.total_citations += citation.second;
       }
     } else if (field.first == "index_terms") {
-      payload.index_terms = splitLower(field.second.front(), ',');
+      payload.index_terms = splitFix(field.second.front(), ',');
     } else if (field.first == "author_keywords") {
-      payload.author_keywords = splitLower(field.second.front(), ',');
+      payload.author_keywords = splitFix(field.second.front(), ',');
     } else if (field.first == "subject_areas") {
-      payload.areas = splitLower(field.second.front(), ',');
+      payload.areas = splitFix(field.second.front(), ',');
     }
   }
 
   return payload;
+}
+
+std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
+                                                    SQLite::Database& db) {
+  std::unordered_map<size_t, size_t> year_citations_map;
+
+  try {
+    // Query for all DOIs that match the keyword in index_term_paper
+    SQLite::Statement query_index(
+        db, "SELECT doi FROM index_term_paper WHERE index_term = ?");
+    query_index.bind(1, keyword);
+    while (query_index.executeStep()) {
+      std::string doi = query_index.getColumn(0).getString();
+      SQLite::Statement query_citations(
+          db, "SELECT year, number FROM citations WHERE doi = ?");
+      query_citations.bind(1, doi);
+      while (query_citations.executeStep()) {
+        size_t year = query_citations.getColumn(0).getInt();
+        size_t number = query_citations.getColumn(1).getInt();
+        year_citations_map[year] += number;
+      }
+    }
+
+    // Query for all DOIs that match the keyword in author_keyword_paper
+    SQLite::Statement query_author(
+        db, "SELECT doi FROM author_keyword_paper WHERE author_keyword = ?");
+    query_author.bind(1, keyword);
+    while (query_author.executeStep()) {
+      std::string doi = query_author.getColumn(0).getString();
+      SQLite::Statement query_citations(
+          db, "SELECT year, number FROM citations WHERE doi = ?");
+      query_citations.bind(1, doi);
+      while (query_citations.executeStep()) {
+        size_t year = query_citations.getColumn(0).getInt();
+        size_t number = query_citations.getColumn(1).getInt();
+        year_citations_map[year] += number;
+      }
+    }
+
+    // Query for all DOIs that match the keyword in area_paper
+    SQLite::Statement query_area(db,
+                                 "SELECT doi FROM area_paper WHERE area = ?");
+    query_area.bind(1, keyword);
+    while (query_area.executeStep()) {
+      std::string doi = query_area.getColumn(0).getString();
+      SQLite::Statement query_citations(
+          db, "SELECT year, number FROM citations WHERE doi = ?");
+      query_citations.bind(1, doi);
+      while (query_citations.executeStep()) {
+        size_t year = query_citations.getColumn(0).getInt();
+        size_t number = query_citations.getColumn(1).getInt();
+        year_citations_map[year] += number;
+      }
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "Exception: " << e.what() << std::endl;
+  }
+
+  // Convert the unordered_map to a vector of pairs
+  std::vector<std::pair<size_t, size_t>> year_citations_vector;
+  for (const auto& entry : year_citations_map) {
+    year_citations_vector.emplace_back(entry.first, entry.second);
+  }
+  messageWarningIf(year_citations_vector.empty(),
+                   "No citations found for keyword: " + keyword);
+
+  return year_citations_vector;
 }

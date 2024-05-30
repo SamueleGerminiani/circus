@@ -37,11 +37,13 @@ int main(int arg, char *argv[]) {
   createDB(db_name);
   auto db = openDB(db_name);
 
-  for (auto &bf : clc::bibFiles) {
-    auto bev = parseBib(bf);
-    for (bibtex::BibTeXEntry &e : bev) {
-      DBPayload payload = toDBPayload(e);
-      insertPaper(db, payload);
+  if (!clc::bibFiles.empty()) {
+    for (auto &bf : clc::bibFiles) {
+      auto bev = parseBib(bf);
+      for (bibtex::BibTeXEntry &e : bev) {
+        DBPayload payload = toDBPayload(e);
+        insertPaper(db, payload);
+      }
     }
   }
 
@@ -49,7 +51,16 @@ int main(int arg, char *argv[]) {
   // std::cout << getIcon() << "\n";
 
   // printAllTables(db);
-  printPapers(db);
+  // printIndexTerms(db);
+  std::string keyword = "energy efficient";
+  // measure time with chrono in milliseconds
+  auto y_c = getCitations(keyword, db);
+
+  std::cout << "Citations for keyword: " << keyword << "\n";
+  // backwards iteration
+  for (auto it = y_c.rbegin(); it != y_c.rend(); ++it) {
+    std::cout << it->first << " : " << it->second << "\n";
+  }
   return 0;
 }
 

@@ -3,6 +3,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include <string>
+#include <vector>
 
 class DBPayload;
 namespace bibtex {
@@ -35,3 +36,7 @@ void printAllTables(SQLite::Database& db);
 
 // Function to convert a BibTeXEntry to a DBPayload
 DBPayload toDBPayload(const bibtex::BibTeXEntry& entry);
+
+// Function to get the total number of citations per year for a given keyword
+std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
+                                                    SQLite::Database& db);

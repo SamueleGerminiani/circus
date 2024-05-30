@@ -18,13 +18,20 @@ inline std::vector<std::string> split(const std::string& str, char delimiter) {
   }
   return tokens;
 }
-inline std::vector<std::string> splitLower(const std::string& str,
-                                           char delimiter) {
+inline std::string removeLeading(const std::string& str) {
+  size_t start = 0;
+  while (start < str.size() && std::isspace(str[start])) {
+    start++;
+  }
+  return str.substr(start);
+}
+inline std::vector<std::string> splitFix(const std::string& str,
+                                         char delimiter) {
   std::vector<std::string> tokens;
   std::istringstream ss(str);
   std::string token;
   while (std::getline(ss, token, delimiter)) {
-    tokens.push_back(toLower(token));
+    tokens.push_back(removeLeading(toLower(token)));
   }
   return tokens;
 }
