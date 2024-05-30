@@ -71,9 +71,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 #gtests
 add_subdirectory(src/googletest EXCLUDE_FROM_ALL)
 
-#boost
-#find_package(BOOST1_83) 
-
 #sqlite3
 add_subdirectory(src/SQLiteCpp)
 

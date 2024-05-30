@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 
-#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -17,7 +16,7 @@ cxxopts::ParseResult parseCircus(int argc, char *argv[]) {
 
     // clang-format off
 options.add_options()
-("in_bib", ".bib", cxxopts::value<std::string>(), "<FILE>")
+("load-bib-data", ".bib file or directory containing bib files", cxxopts::value<std::string>(), "<PATH>")
 ("help", "Show options");
     // clang-format on
 

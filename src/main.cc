@@ -6,7 +6,9 @@
 #include <iostream>
 #include <string>
 
+#include "DBPayload.hh"
 #include "bibParser.hh"
+#include "bibtexentry.hpp"
 #include "commandLineParser.hh"
 #include "db.hh"
 #include "globals.hh"
@@ -37,8 +39,8 @@ int main(int arg, char *argv[]) {
 
   for (auto &bf : clc::bibFiles) {
     auto bev = parseBib(bf);
-    for (auto &e : bev) {
-      auto payload = toDBPayload(e);
+    for (bibtex::BibTeXEntry &e : bev) {
+      DBPayload payload = toDBPayload(e);
       insertPaper(db, payload);
     }
   }
@@ -46,7 +48,8 @@ int main(int arg, char *argv[]) {
   // print welcome message
   // std::cout << getIcon() << "\n";
 
-  printAllTables(db);
+  // printAllTables(db);
+  printPapers(db);
   return 0;
 }
 
@@ -99,9 +102,18 @@ void parseCommandLineArguments(int argc, char *args[]) {
   // parse the cmd using an external library
   auto result = parseCircus(argc, args);
 
-  if (result.count("in_bib")) {
-    clc::bibFiles.push_back(result["in_bib"].as<std::string>());
-    messageErrorIf(!std::filesystem::exists(clc::bibFiles[0]),
-                   "Can not find bib file '" + clc::bibFiles[0] + "'");
+  if (result.count("load-bib-data")) {
+    std::string bibPath = result["load-bib-data"].as<std::string>();
+    messageErrorIf(bibPath.back() == '/' && !std::filesystem::exists(bibPath),
+                   "Can not find directory path '" + bibPath + "'");
+    if (std::filesystem::is_directory(bibPath)) {
+      for (const auto &entry : std::filesystem::directory_iterator(bibPath)) {
+        if (entry.path().extension() == ".bib") {
+          clc::bibFiles.push_back(entry.path().u8string());
+        }
+      }
+    } else {
+      clc::bibFiles.push_back(bibPath);
+    }
   }
 }
