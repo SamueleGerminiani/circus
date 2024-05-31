@@ -6,7 +6,10 @@ SET(NAME gui)
 # Sources.
 #############################################
 
+qt6_wrap_cpp(moc_sources src/gui.cc include/gui.hh)
+
 SET(GUI_SRC src/gui.cc)
+list(APPEND GUI_SRC ${moc_sources})
 
 #############################################
 # Targets.
@@ -14,6 +17,7 @@ SET(GUI_SRC src/gui.cc)
 add_library(${NAME} ${GUI_SRC})
 target_include_directories(${NAME} PUBLIC include/)
 target_link_libraries(${NAME} Qt6::Widgets)
+
 
 
 

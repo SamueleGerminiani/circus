@@ -44,4 +44,5 @@ void runGui(int argc, char *argv[]) {
   QApplication app(argc, argv);
   MainWindow window;
   window.show();
+  app.exec();
 }

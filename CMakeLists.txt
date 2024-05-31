@@ -1,8 +1,15 @@
+##force clang if on macos
+if(APPLE)
+    set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
+    set(CMAKE_C_COMPILER "/usr/bin/clang")
+endif()
+
 # set the project name
 cmake_minimum_required(VERSION 3.14)
 project("circus" CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 
 ### COMPILER FLAGS ###
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
@@ -123,7 +130,7 @@ add_subdirectory(src/commandLineParser)
 target_link_libraries(${NAME} commandLineParser)
 
 #c++17 filesystem
-target_link_libraries(${NAME} stdc++fs)
+#target_link_libraries(${NAME} stdc++fs)
 
 
 ########circus#########################################

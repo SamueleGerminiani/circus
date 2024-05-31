@@ -25,9 +25,9 @@ void exceptionHandler();
 void handleErrors();
 
 int main(int arg, char *argv[]) {
-#ifndef DEBUG
-  handleErrors();
-#endif
+  //#ifndef DEBUG
+  //  handleErrors();
+  //#endif
 
   // enforce deterministic rand
   srand(1);
