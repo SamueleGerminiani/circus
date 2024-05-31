@@ -3,7 +3,10 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMainWindow>
+#include <QStandardItemModel>  // Include QStandardItemModel for the table
 #include <QStringListModel>
+#include <QTableView>
+#include <QTimer>
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -13,14 +16,17 @@ class MainWindow : public QMainWindow {
   ~MainWindow();
 
  private slots:
-  void onTextChanged(const QString &text);
+  void startTextChangedTimer();
+  void onTimerTimeout();
+  void onTableClicked(const QModelIndex &index);
+  void keyPressEvent(QKeyEvent *event) override;
 
  private:
   QLineEdit *textBox;
-  QListView *listView;
-  QStringListModel *model;
-
-  QStringList searchKeywords(const std::string &word);
+  QTableView *tableView;
+  QStandardItemModel *model;
+  QTimer *textChangedTimer;
+  QTabWidget *tabWidget;
 };
 
 void runGui(int argc, char *argv[]);

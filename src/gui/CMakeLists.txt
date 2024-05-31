@@ -16,7 +16,7 @@ list(APPEND GUI_SRC ${moc_sources})
 #############################################
 add_library(${NAME} ${GUI_SRC})
 target_include_directories(${NAME} PUBLIC include/)
-target_link_libraries(${NAME} Qt6::Widgets)
+target_link_libraries(${NAME} db Qt6::Widgets Qt6::Charts)
 
 
 

@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-class DBPayload;
+struct DBPayload;
 namespace bibtex {
-class BibTeXEntry;
+struct BibTeXEntry;
 }
 
 SQLite::Database openDB(std::string db_name = "research_papers.db");
@@ -40,3 +40,10 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry);
 // Function to get the total number of citations per year for a given keyword
 std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
                                                     SQLite::Database& db);
+
+std::vector<std::pair<std::string, size_t>> getAllWordsWithTotalCitations(
+    SQLite::Database& db);
+
+std::vector<std::pair<std::string, size_t>> searchKeywords(
+    const std::string& word);
+

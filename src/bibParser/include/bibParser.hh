@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 namespace bibtex {
-class BibTeXEntry;
+struct BibTeXEntry;
 }
 
 typedef std::vector<bibtex::BibTeXEntry> BibTeXEntryVector;

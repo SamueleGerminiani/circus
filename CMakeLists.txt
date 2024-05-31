@@ -86,7 +86,7 @@ add_subdirectory(src/SQLiteCpp)
 add_subdirectory(src/bibtex-spirit)
 
 #Qt6
-find_package(Qt6 COMPONENTS Widgets REQUIRED)
+find_package(Qt6 COMPONENTS Widgets Charts REQUIRED)
 message(STATUS "Qt6 found: ${Qt6Widgets_FOUND}")
 
 
