@@ -2,6 +2,7 @@
 cmake_minimum_required(VERSION 3.14)
 project("circus" CXX)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 ### COMPILER FLAGS ###
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
@@ -77,6 +78,10 @@ add_subdirectory(src/SQLiteCpp)
 #bibtex-spirit
 add_subdirectory(src/bibtex-spirit)
 
+#Qt6
+find_package(Qt6 COMPONENTS Widgets REQUIRED)
+message(STATUS "Qt6 found: ${Qt6Widgets_FOUND}")
+
 
 include_directories(
     src/globals/include/
@@ -127,7 +132,9 @@ target_link_libraries(${NAME} stdc++fs)
 add_subdirectory(src/db)
 #bibParser
 add_subdirectory(src/bibParser)
-target_link_libraries(${NAME} db bibParser)
+#gui
+add_subdirectory(src/gui)
+target_link_libraries(${NAME} db bibParser gui)
 
 
 ### TESTS & EXAMPLES ##################################

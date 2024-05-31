@@ -12,6 +12,7 @@
 #include "commandLineParser.hh"
 #include "db.hh"
 #include "globals.hh"
+#include "gui.hh"
 #include "message.hh"
 
 /// @brief handle all the command line arguments
@@ -52,15 +53,16 @@ int main(int arg, char *argv[]) {
 
   // printAllTables(db);
   // printIndexTerms(db);
-  std::string keyword = "energy efficient";
-  // measure time with chrono in milliseconds
-  auto y_c = getCitations(keyword, db);
+  // std::string keyword = "energy efficient";
+  //// measure time with chrono in milliseconds
+  // auto y_c = getCitations(keyword, db);
 
-  std::cout << "Citations for keyword: " << keyword << "\n";
-  // backwards iteration
-  for (auto it = y_c.rbegin(); it != y_c.rend(); ++it) {
-    std::cout << it->first << " : " << it->second << "\n";
-  }
+  // std::cout << "Citations for keyword: " << keyword << "\n";
+  //// backwards iteration
+  // for (auto it = y_c.rbegin(); it != y_c.rend(); ++it) {
+  //   std::cout << it->first << " : " << it->second << "\n";
+  // }
+  runGui(arg, argv);
   return 0;
 }
 
