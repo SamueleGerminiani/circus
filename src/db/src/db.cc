@@ -409,12 +409,16 @@ std::vector<KeywordQueryResult> filterKeywordsRegex(
     const std::string& keywordRegex,
     const std::vector<KeywordQueryResult>& kqr_vec) {
   std::vector<KeywordQueryResult> filtered_kqr_vec;
-  std::regex reg(keywordRegex);
 
-  for (const auto& kqr : kqr_vec) {
-    if (std::regex_search(kqr._word, reg)) {
-      filtered_kqr_vec.push_back(kqr);
+  try {
+    std::regex reg(keywordRegex);
+    for (const auto& kqr : kqr_vec) {
+      if (std::regex_search(kqr._word, reg)) {
+        filtered_kqr_vec.push_back(kqr);
+      }
     }
+  } catch (const std::regex_error& e) {
+    messageWarning("Invalid regex: " + keywordRegex);
   }
 
   return filtered_kqr_vec;
