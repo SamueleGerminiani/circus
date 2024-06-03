@@ -1,8 +1,11 @@
 #include "gui.hh"
 
 #include <QApplication>
+#include <QHeaderView>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPushButton>
 #include <QStandardItemModel>  // Include QStandardItemModel for the table
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -18,9 +21,14 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       textBox(new QLineEdit(this)),
       tableView(new QTableView(this)),
-      model(new QStandardItemModel(0, 2, this)),
+      model(new QStandardItemModel(0, 3, this)),
       textChangedTimer(new QTimer(this)),
       tabWidget(new QTabWidget(this)) {
+  setupLayout();
+  setupConnections();
+}
+
+void MainWindow::setupLayout() {
   // Set up the layout
   QWidget *centralWidget = new QWidget(this);
   QHBoxLayout *mainLayout = new QHBoxLayout(centralWidget);
@@ -39,16 +47,21 @@ MainWindow::MainWindow(QWidget *parent)
 
   // Set headers for the table
   model->setHeaderData(0, Qt::Horizontal, "Keyword");
-  model->setHeaderData(1, Qt::Horizontal, "Total Citations");
+  model->setHeaderData(1, Qt::Horizontal, "Type");
+  model->setHeaderData(2, Qt::Horizontal, "Total Citations");
 
   // Set the table to be non-editable
   tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
-  // Make the tabs closable
+  // Make the tabs closable and movable
   tabWidget->setTabsClosable(true);
-  // Enable movable tabs
   tabWidget->setMovable(true);
 
+  // Enable sorting on the table view
+  tableView->setSortingEnabled(true);
+}
+
+void MainWindow::setupConnections() {
   connect(tabWidget, &QTabWidget::tabCloseRequested, tabWidget,
           &QTabWidget::removeTab);
 
@@ -65,10 +78,6 @@ MainWindow::MainWindow(QWidget *parent)
 
   // Connect the table view click signal to the slot
   connect(tableView, &QTableView::clicked, this, &MainWindow::onTableClicked);
-
-  // Connect tab close requested signal to removeTab slot
-  connect(tabWidget, &QTabWidget::tabCloseRequested, tabWidget,
-          &QTabWidget::removeTab);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
@@ -88,13 +97,45 @@ MainWindow::~MainWindow() {
   delete textChangedTimer;
   delete tabWidget;
 }
+void MainWindow::resizeEvent(QResizeEvent *event) {
+  QMainWindow::resizeEvent(event);
+  adjustFontSizes();
+}
+
+// Custom slot to adjust font size of all text-containing widgets based on
+// window size
+void MainWindow::adjustFontSizes() {
+  int windowWidth = this->width();  // Get current window width
+
+  // Iterate through all widgets in the application
+  for (QWidget *widget : QApplication::allWidgets()) {
+    // Check if the widget contains text
+    if (QLabel *label = qobject_cast<QLabel *>(widget)) {
+      label->setFont(
+          QFont("Arial", windowWidth / 50));  // Set font size for QLabel
+    } else if (QPushButton *button = qobject_cast<QPushButton *>(widget)) {
+      button->setFont(
+          QFont("Arial", windowWidth / 50));  // Set font size for QPushButton
+    } else if (QLineEdit *lineEdit = qobject_cast<QLineEdit *>(widget)) {
+      lineEdit->setFont(
+          QFont("Arial", windowWidth / 50));  // Set font size for QLineEdit
+    } else if (QTableView *tableView = qobject_cast<QTableView *>(widget)) {
+      int fontSize = tableView->size().width() / 50;
+      tableView->setFont(
+          QFont("Arial", fontSize));  // Set font size for QTableView
+      tableView->resizeColumnsToContents();
+    }
+
+    // Add more conditions for other text-containing widgets as needed
+  }
+}
 
 void MainWindow::startTextChangedTimer() {
   // If the timer is running, stop it and start again
   if (textChangedTimer->isActive()) textChangedTimer->stop();
 
   // Start the timer with the desired delay
-  textChangedTimer->start(500);
+  textChangedTimer->start(300);
 }
 
 void MainWindow::onTimerTimeout() {
@@ -103,26 +144,42 @@ void MainWindow::onTimerTimeout() {
 
   // Clear previous data from the model
   model->removeRows(0, model->rowCount());
+  size_t maxKeywords = INT_MAX;
 
   // Add new data to the model
   for (const auto &kqr : kqr_vec) {
+    if (maxKeywords-- == 0) break;
+
     QList<QStandardItem *> rowItems;
     rowItems << new QStandardItem(QString::fromStdString(kqr._word));
-    rowItems << new QStandardItem(QString::number(kqr._totalCitations));
+
+    std::string typeStr;
+    for (auto type : kqr._type) {
+      typeStr += toString(type) + ", ";
+    }
+    // Remove the trailing comma and space
+    typeStr = typeStr.substr(0, typeStr.size() - 2);
+
+    rowItems << new QStandardItem(QString::fromStdString(typeStr));
+
+    // new integer item for citations
+    auto citationItem = new QStandardItem();
+    citationItem->setData(static_cast<qlonglong>(kqr._totalCitations),
+                          Qt::DisplayRole);  // Cast to qlonglong
+
+    rowItems << citationItem;
     model->appendRow(rowItems);
   }
 
   // Resize columns to fit contents
   tableView->resizeColumnsToContents();
 
-  // Hide the chart tab widget if no charts are being shown
-  if (tabWidget->count() == 0) {
-    tabWidget->hide();
-  }
+  // Sort the table by the third column in descending order of citations
+  tableView->sortByColumn(2, Qt::DescendingOrder);
 }
 void MainWindow::onTableClicked(const QModelIndex &index) {
   if (index.isValid() &&
-      index.column() == 1) {  // Check if the second column is clicked
+      index.column() == 2) {  // Check if the third column is clicked
     QString keyword = model->data(index.siblingAtColumn(0)).toString();
     openDB();
     KeywordQueryResult kqr = getCitations(keyword.toStdString());
@@ -189,6 +246,8 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     tabWidget->setCurrentIndex(tabIndex);
     tabWidget->show();  // Ensure the tab widget is shown when charts are added
   }
+
+  adjustFontSizes();
 }
 
 void runGui(int argc, char *argv[]) {

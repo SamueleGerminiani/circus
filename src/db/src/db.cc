@@ -3,6 +3,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include <iostream>
+#include <regex>
 #include <unordered_map>
 
 #include "DBPayload.hh"
@@ -269,7 +270,7 @@ KeywordQueryResult getCitations(const std::string& keyword) {
         size_t year = query_citations.getColumn(0).getInt();
         size_t number = query_citations.getColumn(1).getInt();
         kqr._yearToCitations[year] += number;
-        kqr._type.push_back(KeywordType::IndexTerm);
+        kqr._type.insert(KeywordType::IndexTerm);
       }
     }
 
@@ -286,7 +287,7 @@ KeywordQueryResult getCitations(const std::string& keyword) {
         size_t year = query_citations.getColumn(0).getInt();
         size_t number = query_citations.getColumn(1).getInt();
         kqr._yearToCitations[year] += number;
-        kqr._type.push_back(KeywordType::AuthorKeyword);
+        kqr._type.insert(KeywordType::AuthorKeyword);
       }
     }
 
@@ -303,7 +304,7 @@ KeywordQueryResult getCitations(const std::string& keyword) {
         size_t year = query_citations.getColumn(0).getInt();
         size_t number = query_citations.getColumn(1).getInt();
         kqr._yearToCitations[year] += number;
-        kqr._type.push_back(KeywordType::SubjectArea);
+        kqr._type.insert(KeywordType::SubjectArea);
       }
     }
   } catch (const std::exception& e) {
@@ -337,10 +338,10 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
           word_to_kqr[keyword]._totalCitations += citations;
-          word_to_kqr[keyword]._papers.insert(doi);
-          word_to_kqr[keyword]._type.push_back(KeywordType::AuthorKeyword);
-          word_to_kqr[keyword]._word = keyword;
         }
+        word_to_kqr[keyword]._type.insert(KeywordType::AuthorKeyword);
+        word_to_kqr[keyword]._papers.insert(doi);
+        word_to_kqr[keyword]._word = keyword;
       }
     }
 
@@ -361,10 +362,10 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
           word_to_kqr[keyword]._totalCitations += citations;
-          word_to_kqr[keyword]._papers.insert(doi);
-          word_to_kqr[keyword]._type.push_back(KeywordType::IndexTerm);
-          word_to_kqr[keyword]._word = keyword;
         }
+        word_to_kqr[keyword]._papers.insert(doi);
+        word_to_kqr[keyword]._type.insert(KeywordType::IndexTerm);
+        word_to_kqr[keyword]._word = keyword;
       }
     }
 
@@ -384,10 +385,10 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
           word_to_kqr[keyword]._totalCitations += citations;
-          word_to_kqr[keyword]._papers.insert(doi);
-          word_to_kqr[keyword]._type.push_back(KeywordType::SubjectArea);
-          word_to_kqr[keyword]._word = keyword;
         }
+        word_to_kqr[keyword]._papers.insert(doi);
+        word_to_kqr[keyword]._type.insert(KeywordType::SubjectArea);
+        word_to_kqr[keyword]._word = keyword;
       }
     }
   } catch (const std::exception& e) {
@@ -403,19 +404,28 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
   return ret;
 }
 
+// Function to filter sentences based on a keyword
+std::vector<KeywordQueryResult> filterKeywordsRegex(
+    const std::string& keywordRegex,
+    const std::vector<KeywordQueryResult>& kqr_vec) {
+  std::vector<KeywordQueryResult> filtered_kqr_vec;
+  std::regex reg(keywordRegex);
+
+  for (const auto& kqr : kqr_vec) {
+    if (std::regex_search(kqr._word, reg)) {
+      filtered_kqr_vec.push_back(kqr);
+    }
+  }
+
+  return filtered_kqr_vec;
+}
+
 std::vector<KeywordQueryResult> searchKeywords(
     const std::string& searchString) {
   static std::vector<KeywordQueryResult> all_words;
   if (all_words.empty()) {
     all_words = queryAllKeywords();
   }
-  std::sort(
-      all_words.begin(), all_words.end(),
-      [&searchString](const KeywordQueryResult& a,
-                      const KeywordQueryResult& b) {
-        size_t countA = longestCommonSubsequenceWithGaps(a._word, searchString);
-        size_t countB = longestCommonSubsequenceWithGaps(b._word, searchString);
-        return countA > countB;  // Sorting in decreasing order
-      });
-  return all_words;
+
+  return filterKeywordsRegex(searchString, all_words);
 }

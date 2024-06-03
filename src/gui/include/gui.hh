@@ -13,6 +13,8 @@ class MainWindow : public QMainWindow {
 
  public:
   MainWindow(QWidget *parent = nullptr);
+  void setupLayout();
+  void setupConnections();
   ~MainWindow();
 
  private slots:
@@ -20,6 +22,9 @@ class MainWindow : public QMainWindow {
   void onTimerTimeout();
   void onTableClicked(const QModelIndex &index);
   void keyPressEvent(QKeyEvent *event) override;
+  void adjustFontSizes();
+
+  void resizeEvent(QResizeEvent *event) override;
 
  private:
   QLineEdit *textBox;

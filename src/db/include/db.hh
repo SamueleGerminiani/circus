@@ -2,6 +2,7 @@
 
 #include <SQLiteCpp/SQLiteCpp.h>
 
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -11,10 +12,23 @@ namespace bibtex {
 struct BibTeXEntry;
 }
 enum KeywordType { SubjectArea, IndexTerm, AuthorKeyword, TitleKeyword };
+inline std::string toString(KeywordType type) {
+  switch (type) {
+    case SubjectArea:
+      return "SubjectArea";
+    case IndexTerm:
+      return "IndexTerm";
+    case AuthorKeyword:
+      return "AuthorKeyword";
+    case TitleKeyword:
+      return "TitleKeyword";
+  }
+  return "Unknown";
+}
 
 struct KeywordQueryResult {
   std::string _word;
-  std::vector<KeywordType> _type;
+  std::set<KeywordType> _type;
   std::map<size_t, size_t> _yearToCitations;
   size_t _totalCitations = 0;
   std::unordered_set<std::string> _papers;
