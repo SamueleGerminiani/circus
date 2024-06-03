@@ -98,17 +98,17 @@ void MainWindow::startTextChangedTimer() {
 }
 
 void MainWindow::onTimerTimeout() {
-  std::vector<std::pair<std::string, size_t>> keywords =
+  std::vector<KeywordQueryResult> kqr_vec =
       searchKeywords(this->textBox->text().toStdString());
 
   // Clear previous data from the model
   model->removeRows(0, model->rowCount());
 
   // Add new data to the model
-  for (const auto &[keyword, citations] : keywords) {
+  for (const auto &kqr : kqr_vec) {
     QList<QStandardItem *> rowItems;
-    rowItems << new QStandardItem(QString::fromStdString(keyword));
-    rowItems << new QStandardItem(QString::number(citations));
+    rowItems << new QStandardItem(QString::fromStdString(kqr._word));
+    rowItems << new QStandardItem(QString::number(kqr._totalCitations));
     model->appendRow(rowItems);
   }
 
@@ -124,16 +124,28 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
   if (index.isValid() &&
       index.column() == 1) {  // Check if the second column is clicked
     QString keyword = model->data(index.siblingAtColumn(0)).toString();
-    auto db = openDB();
-    std::vector<std::pair<size_t, size_t>> citationData =
-        getCitations(keyword.toStdString(), db);
+    openDB();
+    KeywordQueryResult kqr = getCitations(keyword.toStdString());
+    // fix missing data with zeros
+    auto min_max = std::minmax_element(
+        kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
+        [](const auto &a, const auto &b) { return a.first < b.first; });
+
+    for (size_t year = min_max.first->first; year <= min_max.second->first;
+         ++year) {
+      if (kqr._yearToCitations.count(year) == 0) {
+        kqr._yearToCitations.emplace(year, 0);
+      }
+    }
+
     std::vector<std::pair<size_t, size_t>> rateOfChangeData;
 
     // Create the first series for citation data
     QLineSeries *series1 = new QLineSeries();
     QLineSeries *series2 = new QLineSeries();
     size_t comulativeCitations = 0;
-    for (const auto &[x, y] : citationData) {
+
+    for (const auto &[x, y] : kqr._yearToCitations) {
       comulativeCitations += y;
       series1->append(x, comulativeCitations);
       series2->append(x, y);

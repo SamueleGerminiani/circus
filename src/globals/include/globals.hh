@@ -13,6 +13,7 @@ extern bool isilent;
 ///--psilent
 extern bool psilent;
 extern std::vector<std::string> bibFiles;
+extern std::string dbFile;
 }  // namespace clc
 
 // harm stat

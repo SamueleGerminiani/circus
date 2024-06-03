@@ -35,15 +35,15 @@ int main(int arg, char *argv[]) {
   parseCommandLineArguments(arg, argv);
 
   std::string db_name = "research_papers.db";
-  createDB(db_name);
-  auto db = openDB(db_name);
+  createDB();
+  openDB();
 
   if (!clc::bibFiles.empty()) {
     for (auto &bf : clc::bibFiles) {
       auto bev = parseBib(bf);
       for (bibtex::BibTeXEntry &e : bev) {
         DBPayload payload = toDBPayload(e);
-        insertPaper(db, payload);
+        insertPaper(payload);
       }
     }
   }

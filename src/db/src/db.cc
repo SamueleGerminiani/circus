@@ -8,30 +8,33 @@
 #include "DBPayload.hh"
 #include "bibtexentry.hpp"
 #include "dbUtils.hh"
+#include "globals.hh"
 #include "message.hh"
 
-SQLite::Database openDB(std::string db_name) {
+SQLite::Database db(clc::dbFile, SQLite::OPEN_READWRITE);
+
+void openDB() {
   try {
     // Open a database file in read/write mode
-    SQLite::Database db(db_name, SQLite::OPEN_READWRITE);
-    return db;
+    db = SQLite::Database(clc::dbFile, SQLite::OPEN_READWRITE);
   } catch (const std::exception& e) {
     std::cerr << "Exception: " << e.what() << std::endl;
     exit(EXIT_FAILURE);
   }
 }
 
-void createDB(std::string db_name) {
+void createDB() {
   try {
     // return if the database is already created
-    if (std::filesystem::exists("research_papers.db")) {
-      messageInfo("Database already exists");
+    if (std::filesystem::exists(clc::dbFile)) {
+      messageInfo("Database already exists, opening the existing database...");
+      openDB();
       return;
     }
 
     // Open a database file in create/write mode
-    SQLite::Database db("research_papers.db",
-                        SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+    db = SQLite::Database(clc::dbFile,
+                          SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
 
     // Create the paper table
     db.exec(
@@ -79,7 +82,7 @@ void createDB(std::string db_name) {
   }
 }
 
-void insertPaper(SQLite::Database& db, const DBPayload& payload) {
+void insertPaper(const DBPayload& payload) {
   try {
     // Begin a transaction
     SQLite::Transaction transaction(db);
@@ -142,7 +145,7 @@ void insertPaper(SQLite::Database& db, const DBPayload& payload) {
   }
 }
 
-void printPapers(SQLite::Database& db) {
+void printPapers() {
   SQLite::Statement query(db, "SELECT * FROM paper");
   while (query.executeStep()) {
     std::cout << "DOI: " << query.getColumn(0)
@@ -152,7 +155,7 @@ void printPapers(SQLite::Database& db) {
   }
 }
 
-void printCitations(SQLite::Database& db) {
+void printCitations() {
   SQLite::Statement query(db, "SELECT * FROM citations");
   while (query.executeStep()) {
     std::cout << "DOI: " << query.getColumn(0)
@@ -161,7 +164,7 @@ void printCitations(SQLite::Database& db) {
   }
 }
 
-void printIndexTerms(SQLite::Database& db) {
+void printIndexTerms() {
   SQLite::Statement query(db, "SELECT * FROM index_term_paper");
   while (query.executeStep()) {
     std::cout << "Index Term:" << query.getColumn(0)
@@ -169,7 +172,7 @@ void printIndexTerms(SQLite::Database& db) {
   }
 }
 
-void printAuthorKeywords(SQLite::Database& db) {
+void printAuthorKeywords() {
   SQLite::Statement query(db, "SELECT * FROM author_keyword_paper");
   while (query.executeStep()) {
     std::cout << "Author Keyword: " << query.getColumn(0)
@@ -177,7 +180,7 @@ void printAuthorKeywords(SQLite::Database& db) {
   }
 }
 
-void printAreas(SQLite::Database& db) {
+void printAreas() {
   SQLite::Statement query(db, "SELECT * FROM area_paper");
   while (query.executeStep()) {
     std::cout << "Area: " << query.getColumn(0)
@@ -185,32 +188,32 @@ void printAreas(SQLite::Database& db) {
   }
 }
 
-void printAllTables(SQLite::Database& db) {
+void printAllTables() {
   std::cout << "--------------------------------"
             << "\n";
   std::cout << "Paper Table"
             << "\n";
-  printPapers(db);
+  printPapers();
   std::cout << "--------------------------------"
             << "\n";
   std::cout << "Citations Table"
             << "\n";
-  printCitations(db);
+  printCitations();
   std::cout << "--------------------------------"
             << "\n";
   std::cout << "Index Term Paper Table"
             << "\n";
-  printIndexTerms(db);
+  printIndexTerms();
   std::cout << "--------------------------------"
             << "\n";
   std::cout << "Author Keyword Paper Table"
             << "\n";
-  printAuthorKeywords(db);
+  printAuthorKeywords();
   std::cout << "--------------------------------"
             << "\n";
   std::cout << "Area Paper Table"
             << "\n";
-  printAreas(db);
+  printAreas();
   std::cout << "--------------------------------"
             << "\n";
 }
@@ -249,9 +252,8 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
   return payload;
 }
 
-std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
-                                                    SQLite::Database& db) {
-  std::unordered_map<size_t, size_t> year_citations_map;
+KeywordQueryResult getCitations(const std::string& keyword) {
+  KeywordQueryResult kqr;
 
   try {
     // Query for all DOIs that match the keyword in index_term_paper
@@ -266,7 +268,8 @@ std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
       while (query_citations.executeStep()) {
         size_t year = query_citations.getColumn(0).getInt();
         size_t number = query_citations.getColumn(1).getInt();
-        year_citations_map[year] += number;
+        kqr._yearToCitations[year] += number;
+        kqr._type.push_back(KeywordType::IndexTerm);
       }
     }
 
@@ -282,7 +285,8 @@ std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
       while (query_citations.executeStep()) {
         size_t year = query_citations.getColumn(0).getInt();
         size_t number = query_citations.getColumn(1).getInt();
-        year_citations_map[year] += number;
+        kqr._yearToCitations[year] += number;
+        kqr._type.push_back(KeywordType::AuthorKeyword);
       }
     }
 
@@ -298,35 +302,22 @@ std::vector<std::pair<size_t, size_t>> getCitations(const std::string& keyword,
       while (query_citations.executeStep()) {
         size_t year = query_citations.getColumn(0).getInt();
         size_t number = query_citations.getColumn(1).getInt();
-        year_citations_map[year] += number;
+        kqr._yearToCitations[year] += number;
+        kqr._type.push_back(KeywordType::SubjectArea);
       }
     }
   } catch (const std::exception& e) {
     std::cerr << "Exception: " << e.what() << std::endl;
   }
 
-  // Convert the unordered_map to a vector of pairs
-  std::vector<std::pair<size_t, size_t>> year_citations_vector;
-  auto min_max = std::minmax_element(
-      year_citations_map.begin(), year_citations_map.end(),
-      [](const auto& a, const auto& b) { return a.first < b.first; });
-  for (size_t year = min_max.first->first; year <= min_max.second->first;
-       ++year) {
-    if (year_citations_map.count(year) == 0) {
-      year_citations_map.emplace(year, 0);
-    } else {
-      year_citations_vector.emplace_back(year, year_citations_map.at(year));
-    }
-  }
-  messageWarningIf(year_citations_vector.empty(),
+  messageWarningIf(kqr._yearToCitations.empty(),
                    "No citations found for keyword: " + keyword);
 
-  return year_citations_vector;
+  return kqr;
 }
 
-std::vector<std::pair<std::string, size_t>> getAllWordsWithTotalCitations(
-    SQLite::Database& db) {
-  std::unordered_map<std::string, size_t> word_citations_map;
+std::vector<KeywordQueryResult> queryAllKeywords() {
+  std::unordered_map<std::string, KeywordQueryResult> word_to_kqr;
 
   try {
     // Query for all author keywords and calculate total citations
@@ -339,11 +330,16 @@ std::vector<std::pair<std::string, size_t>> getAllWordsWithTotalCitations(
 
         // Query for citations associated with the DOI
         SQLite::Statement query_citations(
-            db, "SELECT number FROM citations WHERE doi = ?");
+            db, "SELECT year, number FROM citations WHERE doi = ?");
         query_citations.bind(1, doi);
         while (query_citations.executeStep()) {
-          size_t citations = query_citations.getColumn(0).getInt();
-          word_citations_map[keyword] += citations;
+          size_t year = query_citations.getColumn(0).getInt();
+          size_t citations = query_citations.getColumn(1).getInt();
+          word_to_kqr[keyword]._yearToCitations[year] += citations;
+          word_to_kqr[keyword]._totalCitations += citations;
+          word_to_kqr[keyword]._papers.insert(doi);
+          word_to_kqr[keyword]._type.push_back(KeywordType::AuthorKeyword);
+          word_to_kqr[keyword]._word = keyword;
         }
       }
     }
@@ -358,11 +354,16 @@ std::vector<std::pair<std::string, size_t>> getAllWordsWithTotalCitations(
 
         // Query for citations associated with the DOI
         SQLite::Statement query_citations(
-            db, "SELECT number FROM citations WHERE doi = ?");
+            db, "SELECT year, number FROM citations WHERE doi = ?");
         query_citations.bind(1, doi);
         while (query_citations.executeStep()) {
-          size_t citations = query_citations.getColumn(0).getInt();
-          word_citations_map[keyword] += citations;
+          size_t year = query_citations.getColumn(0).getInt();
+          size_t citations = query_citations.getColumn(1).getInt();
+          word_to_kqr[keyword]._yearToCitations[year] += citations;
+          word_to_kqr[keyword]._totalCitations += citations;
+          word_to_kqr[keyword]._papers.insert(doi);
+          word_to_kqr[keyword]._type.push_back(KeywordType::IndexTerm);
+          word_to_kqr[keyword]._word = keyword;
         }
       }
     }
@@ -376,11 +377,16 @@ std::vector<std::pair<std::string, size_t>> getAllWordsWithTotalCitations(
 
         // Query for citations associated with the DOI
         SQLite::Statement query_citations(
-            db, "SELECT number FROM citations WHERE doi = ?");
+            db, "SELECT year, number FROM citations WHERE doi = ?");
         query_citations.bind(1, doi);
         while (query_citations.executeStep()) {
-          size_t citations = query_citations.getColumn(0).getInt();
-          word_citations_map[keyword] += citations;
+          size_t year = query_citations.getColumn(0).getInt();
+          size_t citations = query_citations.getColumn(1).getInt();
+          word_to_kqr[keyword]._yearToCitations[year] += citations;
+          word_to_kqr[keyword]._totalCitations += citations;
+          word_to_kqr[keyword]._papers.insert(doi);
+          word_to_kqr[keyword]._type.push_back(KeywordType::SubjectArea);
+          word_to_kqr[keyword]._word = keyword;
         }
       }
     }
@@ -389,21 +395,27 @@ std::vector<std::pair<std::string, size_t>> getAllWordsWithTotalCitations(
   }
 
   // Convert the unordered_map to a vector of pairs
-  std::vector<std::pair<std::string, size_t>> word_citations_vector;
-  for (const auto& entry : word_citations_map) {
-    word_citations_vector.emplace_back(entry.first, entry.second);
+  std::vector<KeywordQueryResult> ret;
+  for (const auto& entry : word_to_kqr) {
+    ret.push_back(entry.second);
   }
 
-  return word_citations_vector;
+  return ret;
 }
 
-std::vector<std::pair<std::string, size_t>> searchKeywords(
-    const std::string& word) {
-  static std::vector<std::pair<std::string, size_t>> all_words;
+std::vector<KeywordQueryResult> searchKeywords(
+    const std::string& searchString) {
+  static std::vector<KeywordQueryResult> all_words;
   if (all_words.empty()) {
-    SQLite::Database db = openDB();
-    all_words = getAllWordsWithTotalCitations(db);
+    all_words = queryAllKeywords();
   }
-  sortBySequenceAlignment(all_words, word);
+  std::sort(
+      all_words.begin(), all_words.end(),
+      [&searchString](const KeywordQueryResult& a,
+                      const KeywordQueryResult& b) {
+        size_t countA = longestCommonSubsequenceWithGaps(a._word, searchString);
+        size_t countB = longestCommonSubsequenceWithGaps(b._word, searchString);
+        return countA > countB;  // Sorting in decreasing order
+      });
   return all_words;
 }

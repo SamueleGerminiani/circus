@@ -7,6 +7,7 @@ bool wsilent = false;
 bool isilent = false;
 bool psilent = false;
 std::vector<std::string> bibFiles;
+std::string dbFile = "research_papers.db";
 }  // namespace clc
 
 // harm stat

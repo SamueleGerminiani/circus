@@ -134,24 +134,3 @@ inline size_t longestCommonSubsequenceWithGaps(const std::string& s1,
   return dp[m][n];
 }
 
-// Comparator function for sorting
-inline bool sortBySequenceAlignment(const std::pair<std::string, size_t>& a,
-                                    const std::pair<std::string, size_t>& b,
-                                    const std::string& token) {
-  size_t countA = longestCommonSubsequenceWithGaps(a.first, token);
-  size_t countB = longestCommonSubsequenceWithGaps(b.first, token);
-  return countA > countB;  // Sorting in decreasing order of longest common
-                           // subsequence with gaps
-}
-
-// Function to sort the word list based on longest common subsequence with gaps
-// with the token
-inline void sortBySequenceAlignment(
-    std::vector<std::pair<std::string, size_t>>& wordList,
-    const std::string& token) {
-  std::sort(wordList.begin(), wordList.end(),
-            [&token](const auto& a, const auto& b) {
-              return sortBySequenceAlignment(a, b, token);
-            });
-}
-
