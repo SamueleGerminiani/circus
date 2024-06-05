@@ -30,6 +30,7 @@ struct KeywordQueryResult {
   std::string _word;
   std::set<KeywordType> _type;
   std::map<size_t, size_t> _yearToCitations;
+  double _zScore = 0;
   size_t _totalCitations = 0;
   std::unordered_set<std::string> _papers;
 };
@@ -63,10 +64,11 @@ void printAllTables();
 // Function to convert a BibTeXEntry to a DBPayload
 DBPayload toDBPayload(const bibtex::BibTeXEntry& entry);
 
-// Function to get the total number of citations per year for a given keyword
-KeywordQueryResult getCitations(const std::string& keyword);
-
 std::vector<KeywordQueryResult> queryAllKeywords();
 
 std::vector<KeywordQueryResult> searchKeywords(const std::string& searchString);
 
+void addZScore(KeywordQueryResult& result);
+KeywordQueryResult getKQR(const std::string& keyword);
+void addKQR(const KeywordQueryResult& kqr);
+void removeKQR(const KeywordQueryResult& kqr);

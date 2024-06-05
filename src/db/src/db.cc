@@ -13,6 +13,16 @@
 #include "message.hh"
 
 SQLite::Database db(clc::dbFile, SQLite::OPEN_READWRITE);
+static std::vector<KeywordQueryResult> all_words;
+
+void addKQR(const KeywordQueryResult& kqr) { all_words.push_back(kqr); }
+void removeKQR(const KeywordQueryResult& kqr) {
+  all_words.erase(std::remove_if(all_words.begin(), all_words.end(),
+                                 [&kqr](const KeywordQueryResult& kqr2) {
+                                   return kqr2._word == kqr._word;
+                                 }),
+                  all_words.end());
+}
 
 void openDB() {
   try {
@@ -253,68 +263,14 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
   return payload;
 }
 
-KeywordQueryResult getCitations(const std::string& keyword) {
-  KeywordQueryResult kqr;
-
-  try {
-    // Query for all DOIs that match the keyword in index_term_paper
-    SQLite::Statement query_index(
-        db, "SELECT doi FROM index_term_paper WHERE index_term = ?");
-    query_index.bind(1, keyword);
-    while (query_index.executeStep()) {
-      std::string doi = query_index.getColumn(0).getString();
-      SQLite::Statement query_citations(
-          db, "SELECT year, number FROM citations WHERE doi = ?");
-      query_citations.bind(1, doi);
-      while (query_citations.executeStep()) {
-        size_t year = query_citations.getColumn(0).getInt();
-        size_t number = query_citations.getColumn(1).getInt();
-        kqr._yearToCitations[year] += number;
-        kqr._type.insert(KeywordType::IndexTerm);
-      }
-    }
-
-    // Query for all DOIs that match the keyword in author_keyword_paper
-    SQLite::Statement query_author(
-        db, "SELECT doi FROM author_keyword_paper WHERE author_keyword = ?");
-    query_author.bind(1, keyword);
-    while (query_author.executeStep()) {
-      std::string doi = query_author.getColumn(0).getString();
-      SQLite::Statement query_citations(
-          db, "SELECT year, number FROM citations WHERE doi = ?");
-      query_citations.bind(1, doi);
-      while (query_citations.executeStep()) {
-        size_t year = query_citations.getColumn(0).getInt();
-        size_t number = query_citations.getColumn(1).getInt();
-        kqr._yearToCitations[year] += number;
-        kqr._type.insert(KeywordType::AuthorKeyword);
-      }
-    }
-
-    // Query for all DOIs that match the keyword in area_paper
-    SQLite::Statement query_area(db,
-                                 "SELECT doi FROM area_paper WHERE area = ?");
-    query_area.bind(1, keyword);
-    while (query_area.executeStep()) {
-      std::string doi = query_area.getColumn(0).getString();
-      SQLite::Statement query_citations(
-          db, "SELECT year, number FROM citations WHERE doi = ?");
-      query_citations.bind(1, doi);
-      while (query_citations.executeStep()) {
-        size_t year = query_citations.getColumn(0).getInt();
-        size_t number = query_citations.getColumn(1).getInt();
-        kqr._yearToCitations[year] += number;
-        kqr._type.insert(KeywordType::SubjectArea);
-      }
-    }
-  } catch (const std::exception& e) {
-    std::cerr << "Exception: " << e.what() << std::endl;
-  }
-
-  messageWarningIf(kqr._yearToCitations.empty(),
-                   "No citations found for keyword: " + keyword);
-
-  return kqr;
+KeywordQueryResult getKQR(const std::string& keyword) {
+  auto kqr = std::find_if(all_words.begin(), all_words.end(),
+                          [&keyword](const KeywordQueryResult& kqr) {
+                            return kqr._word == keyword;
+                          });
+  messageErrorIf(kqr == all_words.end(),
+                 "No data found for keyword: " + keyword);
+  return *kqr;
 }
 
 std::vector<KeywordQueryResult> queryAllKeywords() {
@@ -424,11 +380,44 @@ std::vector<KeywordQueryResult> filterKeywordsRegex(
   return filtered_kqr_vec;
 }
 
+void addZScore(KeywordQueryResult& result) {
+  if (result._yearToCitations.size() < 2) {
+    // Not enough data points to calculate Z-score
+    result._zScore = 0;
+    return;
+  }
+
+  std::vector<size_t> citations;
+  for (const auto& [year, count] : result._yearToCitations) {
+    citations.push_back(count);
+  }
+
+  double mean = calculateMean(citations);
+  double stdDev = calculateStandardDeviation(citations, mean);
+
+  // Calculate Z-score for the last element
+  size_t zSCoreYear = getCurrentYear() - 1;
+  messageWarningIf(!result._yearToCitations.count(zSCoreYear),
+                   "No data "
+                   "found "
+                   "for "
+                   "year: " +
+                       std::to_string(zSCoreYear));
+  size_t lastCitations = result._yearToCitations.at(zSCoreYear);
+  if (stdDev != 0) {
+    result._zScore = (lastCitations - mean) / stdDev;
+  } else {
+    result._zScore = 0;  // Avoid division by zero
+  }
+}
+
 std::vector<KeywordQueryResult> searchKeywords(
     const std::string& searchString) {
-  static std::vector<KeywordQueryResult> all_words;
   if (all_words.empty()) {
     all_words = queryAllKeywords();
+    for (auto& kqr : all_words) {
+      addZScore(kqr);
+    }
   }
 
   return filterKeywordsRegex(searchString, all_words);

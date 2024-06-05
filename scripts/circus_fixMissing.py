@@ -143,9 +143,10 @@ def main():
                     if retrieved_data.authors:
                         auth_string = ""
                         for nt in retrieved_data.authors:
-                            auth_string += (
-                                nt.surname + ", " + nt.given_name + " and "
-                            )
+                            if nt.surname and nt.given_name is not None:
+                                auth_string += (
+                                    nt.surname + ", " + nt.given_name + " and "
+                                )
                         entry[field] = auth_string[: len(auth_string) - 5]
                 elif field == "title":
                     if retrieved_data.title:

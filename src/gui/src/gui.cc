@@ -12,6 +12,8 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
+#include <algorithm>
+#include <iostream>
 #include <vector>
 
 #include "db.hh"
@@ -21,7 +23,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       textBox(new QLineEdit(this)),
       tableView(new QTableView(this)),
-      model(new QStandardItemModel(0, 3, this)),
+      model(new QStandardItemModel(0, 4, this)),
       textChangedTimer(new QTimer(this)),
       tabWidget(new QTabWidget(this)) {
   setupLayout();
@@ -49,6 +51,7 @@ void MainWindow::setupLayout() {
   model->setHeaderData(0, Qt::Horizontal, "Keyword");
   model->setHeaderData(1, Qt::Horizontal, "Type");
   model->setHeaderData(2, Qt::Horizontal, "Total Citations");
+  model->setHeaderData(3, Qt::Horizontal, "z-score");
 
   // Set the table to be non-editable
   tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -80,10 +83,95 @@ void MainWindow::setupConnections() {
   connect(tableView, &QTableView::clicked, this, &MainWindow::onTableClicked);
 }
 
+void MainWindow::addUnionOfSelectedRows() {
+  QModelIndexList selectedIndexes = tableView->selectionModel()->selectedRows();
+
+  if (selectedIndexes.size() < 2) {
+    // No selected rows, do nothing
+    return;
+  }
+
+  std::vector<KeywordQueryResult> searchResults =
+      searchKeywords(textBox->text().toStdString());
+
+  std::vector<KeywordQueryResult> selected_keywords;
+  for (const QModelIndex &index : selectedIndexes) {
+    int row = index.row();
+    QString word = model->data(model->index(row, 0)).toString();
+
+    auto found = std::find_if(searchResults.begin(), searchResults.end(),
+                              [&word](const KeywordQueryResult &kqr) {
+                                return kqr._word == word.toStdString();
+                              });
+    messageErrorIf(found == searchResults.end(),
+                   "Selected row not found in search results");
+    selected_keywords.push_back(*found);
+  }
+
+  // Initialize a new KeywordQueryResult to store the union
+  KeywordQueryResult unionResult;
+  unionResult._word = "";
+  unionResult._type.clear();
+  unionResult._yearToCitations.clear();
+  unionResult._papers.clear();
+
+  // Collect the union of types and other fields from selected rows
+  size_t totalCitations = 0;
+  for (const auto &result : selected_keywords) {
+    unionResult._word += result._word + ", ";
+    for (auto type : result._type) {
+      unionResult._type.insert(type);
+    }
+    for (const auto &[year, citations] : result._yearToCitations) {
+      unionResult._yearToCitations[year] += citations;
+    }
+    totalCitations += result._totalCitations;
+    unionResult._papers.insert(result._papers.begin(), result._papers.end());
+  }
+  // remove trailing comma and space
+  unionResult._word = unionResult._word.substr(0, unionResult._word.size() - 2);
+  unionResult._totalCitations = totalCitations;
+
+  // Recalculate z-score
+  addZScore(unionResult);
+
+  // Add the union result to the table
+  QList<QStandardItem *> rowItems;
+  rowItems << new QStandardItem(QString::fromStdString(unionResult._word));
+  std::string typeStr;
+  for (auto type : unionResult._type) {
+    typeStr += toString(type) + ", ";
+  }
+  // Remove the trailing comma and space
+  typeStr = typeStr.substr(0, typeStr.size() - 2);
+
+  rowItems << new QStandardItem(QString::fromStdString(typeStr));
+  rowItems << new QStandardItem(QString::number(unionResult._totalCitations));
+  QStandardItem *zScoreItem =
+      new QStandardItem(QString::number(unionResult._zScore));
+  if (unionResult._zScore >= 1.f) {
+    zScoreItem->setData(QColor(Qt::darkGreen), Qt::BackgroundRole);
+  } else if (unionResult._zScore < -1.f) {
+    zScoreItem->setData(QColor(Qt::darkRed), Qt::BackgroundRole);
+  }
+  rowItems << zScoreItem;
+  model->appendRow(rowItems);
+
+  addKQR(unionResult);
+}
+
 void MainWindow::keyPressEvent(QKeyEvent *event) {
-  if (event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_W) {
+  if (event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_M) {
+    // Add new table entry as the union of selected rows
+    addUnionOfSelectedRows();
+  } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_W) {
     // Close the current tab when Ctrl + W is pressed
     tabWidget->removeTab(tabWidget->currentIndex());
+  } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_Backspace) {
+    // Remove selected rows when Ctrl + Backspace is pressed
+    removeSelectedRows();
   } else {
     // Handle other key events
     QMainWindow::keyPressEvent(event);
@@ -120,7 +208,7 @@ void MainWindow::adjustFontSizes() {
       lineEdit->setFont(
           QFont("Arial", windowWidth / 50));  // Set font size for QLineEdit
     } else if (QTableView *tableView = qobject_cast<QTableView *>(widget)) {
-      int fontSize = tableView->size().width() / 50;
+      int fontSize = tableView->size().width() / 60;
       tableView->setFont(
           QFont("Arial", fontSize));  // Set font size for QTableView
       tableView->resizeColumnsToContents();
@@ -168,6 +256,17 @@ void MainWindow::onTimerTimeout() {
                           Qt::DisplayRole);  // Cast to qlonglong
 
     rowItems << citationItem;
+
+    // new double item for z-score
+    auto zScoreItem = new QStandardItem();
+    zScoreItem->setData(kqr._zScore, Qt::DisplayRole);
+    // set color to green if z-score is greater than 1
+    if (kqr._zScore >= 1.f) {
+      zScoreItem->setData(QColor(Qt::darkGreen), Qt::BackgroundRole);
+    } else if (kqr._zScore < -1.f) {
+      zScoreItem->setData(QColor(Qt::darkRed), Qt::BackgroundRole);
+    }
+    rowItems << zScoreItem;
     model->appendRow(rowItems);
   }
 
@@ -182,7 +281,7 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
       index.column() == 2) {  // Check if the third column is clicked
     QString keyword = model->data(index.siblingAtColumn(0)).toString();
     openDB();
-    KeywordQueryResult kqr = getCitations(keyword.toStdString());
+    KeywordQueryResult kqr = getKQR(keyword.toStdString());
     // fix missing data with zeros
     auto min_max = std::minmax_element(
         kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
@@ -219,6 +318,9 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     QValueAxis *axisX = new QValueAxis;
     axisX->setLabelFormat("%d");
     axisX->setTitleText("Citations");
+    axisX->setRange(min_max.first->first, min_max.second->first);
+    // Add a label for every year
+    axisX->setTickCount(min_max.second->first - min_max.first->first + 1);
     chart->addAxis(axisX, Qt::AlignBottom);
     series1->attachAxis(axisX);
     series2->attachAxis(axisX);
@@ -248,6 +350,17 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
   }
 
   adjustFontSizes();
+}
+void MainWindow::removeSelectedRows() {
+  QModelIndexList selectedIndexes = tableView->selectionModel()->selectedRows();
+
+  // Remove selected rows from the model
+  for (int i = selectedIndexes.size() - 1; i >= 0; --i) {
+    auto row = selectedIndexes.at(i).row();
+    QString word = model->data(model->index(row, 0)).toString();
+    removeKQR(getKQR(word.toStdString()));
+    model->removeRow(row);
+  }
 }
 
 void runGui(int argc, char *argv[]) {

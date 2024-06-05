@@ -25,6 +25,8 @@ class MainWindow : public QMainWindow {
   void adjustFontSizes();
 
   void resizeEvent(QResizeEvent *event) override;
+  void addUnionOfSelectedRows();
+  void removeSelectedRows();
 
  private:
   QLineEdit *textBox;

@@ -1,4 +1,7 @@
 #pragma once
+#include <algorithm>
+#include <ctime>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -34,5 +37,24 @@ inline std::vector<std::string> splitFix(const std::string& str,
     tokens.push_back(removeLeading(toLower(token)));
   }
   return tokens;
+}
+
+inline double calculateMean(const std::vector<size_t>& values) {
+  double sum = std::accumulate(values.begin(), values.end(), 0.0);
+  return sum / values.size();
+}
+
+inline double calculateStandardDeviation(const std::vector<size_t>& values,
+                                         double mean) {
+  double sq_sum =
+      std::inner_product(values.begin(), values.end(), values.begin(), 0.0);
+  double variance = sq_sum / values.size() - mean * mean;
+  return std::sqrt(variance);
+}
+
+inline size_t getCurrentYear() {
+  time_t now = time(0);
+  tm* ltm = localtime(&now);
+  return 1900 + ltm->tm_year;
 }
 
