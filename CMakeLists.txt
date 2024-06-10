@@ -124,6 +124,28 @@ link_libraries(progresscpp)
 SET(NAME circus)
 add_executable(${NAME} src/main.cc)
 
+# Define MacOS specific settings
+if(APPLE)
+    # Set the MACOSX_BUNDLE property
+    set_target_properties(${PROJECT_NAME} PROPERTIES MACOSX_BUNDLE TRUE)
+
+    # Specify the icon file
+    set(MACOSX_BUNDLE_ICON_FILE MyIcon.icns)
+
+    # Ensure the icon file is part of the bundle
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/MyIcon.icns PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources")
+
+    # Add the icon file to the target
+    target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/MyIcon.icns)
+
+    # Create Info.plist
+    configure_file(${CMAKE_SOURCE_DIR}/Info.plist.in ${CMAKE_BINARY_DIR}/Info.plist @ONLY)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_BINARY_DIR}/Info.plist
+    )
+endif()
+
 
 #Command line parser
 add_subdirectory(src/commandLineParser)
@@ -143,6 +165,10 @@ add_subdirectory(src/bibParser)
 add_subdirectory(src/gui)
 target_link_libraries(${NAME} db bibParser gui)
 
+#Copy the executable to the build directory
+add_custom_command(TARGET ${NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${NAME}> ${CMAKE_BINARY_DIR}/$<TARGET_FILE_NAME:${NAME}>
+    )
 
 ### TESTS & EXAMPLES ##################################
 enable_testing()
