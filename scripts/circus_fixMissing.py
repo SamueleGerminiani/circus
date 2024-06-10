@@ -6,14 +6,29 @@ from pybliometrics.scopus import ScopusSearch
 from pybliometrics.scopus import CitationOverview
 import pandas as pd
 import re
+from datetime import datetime
 
 
-def get_citations_per_year(doi, start_year, end_year):
-    doi_list = []
-    doi_list.append(doi)
+def get_citations_per_year(doi_eid, start_year, end_year):
+    idType = ""
+    id_list = []
+
+    if doi_eid[0] is not None:
+        idType = "doi"
+        id_list.append(doi_eid[0])
+    elif doi_eid[1] is not None:
+        idType = "scopus_id"
+        # strip the '2-s2.0-' prefix
+        scopus_id = doi_eid[1].split("-")[2]
+        id_list.append(scopus_id)
+
     # Create a CitationOverview instance
     co = CitationOverview(
-        identifier=doi_list, start=start_year, end=end_year, id_type="doi"
+        identifier=id_list,
+        start=start_year,
+        end=end_year,
+        id_type=idType,
+        refresh=True,
     )
 
     return co.cc[0]
@@ -37,6 +52,15 @@ def retrieve_data(entry):
                 print("Scopus search failed:", "ab is None")
         except Exception as e:
             print("Scopus search failed:", e)
+    elif "eid" in entry and entry["eid"] != "":
+        try:
+            ab = AbstractRetrieval(
+                identifier=entry["eid"], id_type="eid", view="FULL"
+            )
+            if not ab:
+                print("Scopus search failed:", "ab is None")
+        except Exception as e:
+            print("Scopus search failed:", e)
     elif "title" in entry and entry["title"] != "":
         eid = retrieve_eid(entry["title"])
         if eid:
@@ -45,7 +69,7 @@ def retrieve_data(entry):
                     identifier=eid, id_type="eid", view="FULL"
                 )
                 if not ab:
-                    print("Scopus search failed:", "ab is None")
+                    print("Scopus cearch failed:", "ab is None")
                 if ab and (
                     clean(ab.title.lower()) != clean(entry["title"].lower())
                 ):
@@ -119,6 +143,7 @@ def main():
         "doi",
         "author",
         "title",
+        "year",
         "author_keywords",
         "index_terms",
         "subject_areas",
@@ -126,7 +151,9 @@ def main():
     ]
 
     for entry in result_database.entries:
-        if "doi" not in entry or entry["doi"] == "":
+        if ("doi" not in entry or entry["doi"] == "") and (
+            "eid" not in entry or entry["eid"] == ""
+        ):
             ignored_entries += 1
             continue
 
@@ -163,12 +190,21 @@ def main():
                         for sa in retrieved_data.subject_areas:
                             subject_areas.append(sa.area)
                         entry[field] = ", ".join(subject_areas)
+                elif field == "year":
+                    if retrieved_data.coverDate:
+                        entry[field] = retrieved_data.coverDate.split("-")[0]
                 elif field == "per_year_citations":
-                    pyc = get_citations_per_year(
-                        retrieved_data.doi, 2019, 2024
-                    )
-                    for year, count in pyc:
-                        entry[field] += f"{year}: {count}, "
+                    if retrieved_data.coverDate:
+                        year = retrieved_data.coverDate.split("-")[0]
+                        doi_eid = (retrieved_data.doi, retrieved_data.eid)
+                        pyc = get_citations_per_year(
+                            doi_eid, year, datetime.now().year
+                        )
+                        for year, count in pyc:
+                            entry[field] += f"{year}: {count}, "
+                    else:
+                        ignored_entries += 1
+                        continue
 
                     # remove last comma
                     entry[field] = entry[field][:-2]
@@ -179,7 +215,7 @@ def main():
         bibtexparser.dump(result_database, bibfile)
 
     print(f"Entries fixed: {entries_fixed}")
-    print(f"Ignored entries without title: {ignored_entries}")
+    print(f"Ignored entries: {ignored_entries}")
     print(f"Could not fix {scopus_error} entries due to scopus errors")
 
 

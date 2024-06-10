@@ -223,7 +223,7 @@ void MainWindow::startTextChangedTimer() {
   if (textChangedTimer->isActive()) textChangedTimer->stop();
 
   // Start the timer with the desired delay
-  textChangedTimer->start(300);
+  textChangedTimer->start(1000);
 }
 
 void MainWindow::onTimerTimeout() {
@@ -232,7 +232,7 @@ void MainWindow::onTimerTimeout() {
 
   // Clear previous data from the model
   model->removeRows(0, model->rowCount());
-  size_t maxKeywords = INT_MAX;
+  size_t maxKeywords = 1000;
 
   // Add new data to the model
   for (const auto &kqr : kqr_vec) {
@@ -317,7 +317,7 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
 
     QValueAxis *axisX = new QValueAxis;
     axisX->setLabelFormat("%d");
-    axisX->setTitleText("Citations");
+    axisX->setTitleText("Year");
     axisX->setRange(min_max.first->first, min_max.second->first);
     // Add a label for every year
     axisX->setTickCount(min_max.second->first - min_max.first->first + 1);
@@ -327,7 +327,7 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
 
     QValueAxis *axisY = new QValueAxis;
     axisY->setLabelFormat("%d");
-    axisY->setTitleText("Year");
+    axisY->setTitleText("Citations");
     axisY->setRange(0, comulativeCitations + 1);  // Set the range of the axis
     chart->addAxis(axisY, Qt::AlignLeft);
     series1->attachAxis(axisY);

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <regex>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "DBPayload.hh"
 #include "bibtexentry.hpp"
@@ -230,12 +231,16 @@ void printAllTables() {
 }
 
 DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
+  static std::unordered_set<std::string> unique_ids;
   DBPayload payload;
 
   // Iterate over fields of BibTeXEntry
   for (const auto& field : entry.fields) {
-    if (field.first == "doi") {
-      payload.doi = field.second.front();  // Assuming doi is a single value
+    if (field.first == "doi" || field.first == "eid") {
+      if (field.second.front() != "" && payload.doi == "") {
+        payload.doi =
+            field.second.front();  // Assuming doi/eid is a single value
+      }
     } else if (field.first == "title") {
       payload.title = field.second.front();  // Assuming title is a single value
     } else if (field.first == "author") {
@@ -258,6 +263,17 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
     } else if (field.first == "subject_areas") {
       payload.areas = splitFix(field.second.front(), ',');
     }
+  }
+
+  messageErrorIf(
+      payload.doi == "",
+      "DOI/eid not found in BibTeX entry with title: " + payload.title);
+
+  if (unique_ids.count(payload.doi)) {
+    messageWarning("Repeated DOI/eid found in BibTeX entry with title: " +
+                   payload.title);
+  } else {
+    unique_ids.insert(payload.doi);
   }
 
   return payload;
