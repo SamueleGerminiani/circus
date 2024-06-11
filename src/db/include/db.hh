@@ -4,6 +4,7 @@
 
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -33,6 +34,7 @@ struct KeywordQueryResult {
   double _zScore = 0;
   size_t _totalCitations = 0;
   std::unordered_set<std::string> _papers;
+  std::map<size_t, std::unordered_set<std::string>> _yearToPapers;
 };
 
 extern SQLite::Database db;

@@ -13,7 +13,6 @@
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
 #include <algorithm>
-#include <iostream>
 #include <vector>
 
 #include "db.hh"
@@ -36,7 +35,26 @@ void MainWindow::setupLayout() {
   QHBoxLayout *mainLayout = new QHBoxLayout(centralWidget);
 
   QVBoxLayout *leftLayout = new QVBoxLayout();
-  leftLayout->addWidget(textBox);
+
+  // Create a horizontal layout to hold the text box and slider
+  QHBoxLayout *textBoxLayout = new QHBoxLayout();
+  textBoxLayout->addWidget(textBox);
+
+  // Initialize the slider
+  maxRowsSlider = new QSlider(Qt::Horizontal, this);
+  maxRowsSlider->setRange(1, 10000);    // Adjust range as needed
+  maxRowsSlider->setValue(maxTabRows);  // Set default value
+
+  // Initialize the labels for min and max values
+  QLabel *minLabel = new QLabel("1", this);
+  QLabel *maxLabel = new QLabel("10000", this);
+
+  // Add the text box, min label, slider, and max label to the layout
+  textBoxLayout->addWidget(minLabel);
+  textBoxLayout->addWidget(maxRowsSlider);
+  textBoxLayout->addWidget(maxLabel);
+
+  leftLayout->addLayout(textBoxLayout);
   leftLayout->addWidget(tableView);
 
   mainLayout->addLayout(leftLayout);
@@ -81,6 +99,15 @@ void MainWindow::setupConnections() {
 
   // Connect the table view click signal to the slot
   connect(tableView, &QTableView::clicked, this, &MainWindow::onTableClicked);
+
+  // Connect the slider value change signal to the slot
+  connect(maxRowsSlider, &QSlider::valueChanged, this,
+          &MainWindow::onMaxRowsSliderValueChanged);
+}
+
+void MainWindow::onMaxRowsSliderValueChanged(int value) {
+  maxTabRows = value;
+  onTimerTimeout();  // Refresh the table view with the new max rows value
 }
 
 void MainWindow::addUnionOfSelectedRows() {
@@ -125,11 +152,18 @@ void MainWindow::addUnionOfSelectedRows() {
     for (const auto &[year, citations] : result._yearToCitations) {
       unionResult._yearToCitations[year] += citations;
     }
+    for (const auto &[year, papers] : result._yearToPapers) {
+      unionResult._yearToPapers[year].insert(papers.begin(), papers.end());
+    }
     totalCitations += result._totalCitations;
     unionResult._papers.insert(result._papers.begin(), result._papers.end());
   }
   // remove trailing comma and space
   unionResult._word = unionResult._word.substr(0, unionResult._word.size() - 2);
+  size_t maxChars = 50;
+  if (unionResult._word.size() > maxChars) {
+    unionResult._word = unionResult._word.substr(0, maxChars) + "...";
+  }
   unionResult._totalCitations = totalCitations;
 
   // Recalculate z-score
@@ -172,6 +206,10 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
              event->key() == Qt::Key_Backspace) {
     // Remove selected rows when Ctrl + Backspace is pressed
     removeSelectedRows();
+  } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_A) {
+    // Select all rows in the table
+    tableView->selectAll();
   } else {
     // Handle other key events
     QMainWindow::keyPressEvent(event);
@@ -232,7 +270,7 @@ void MainWindow::onTimerTimeout() {
 
   // Clear previous data from the model
   model->removeRows(0, model->rowCount());
-  size_t maxKeywords = 1000;
+  size_t maxKeywords = maxTabRows;
 
   // Add new data to the model
   for (const auto &kqr : kqr_vec) {
@@ -282,7 +320,8 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     QString keyword = model->data(index.siblingAtColumn(0)).toString();
     openDB();
     KeywordQueryResult kqr = getKQR(keyword.toStdString());
-    // fix missing data with zeros
+
+    // Fix missing data with zeros
     auto min_max = std::minmax_element(
         kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
         [](const auto &a, const auto &b) { return a.first < b.first; });
@@ -294,23 +333,51 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
       }
     }
 
-    std::vector<std::pair<size_t, size_t>> rateOfChangeData;
+    // Create series for citation data, rate of change, and impact factor
+    QLineSeries *citationSeries = new QLineSeries();
+    QLineSeries *rateOfChangeSeries = new QLineSeries();
+    QLineSeries *impactFactorSeries = new QLineSeries();
 
-    // Create the first series for citation data
-    QLineSeries *series1 = new QLineSeries();
-    QLineSeries *series2 = new QLineSeries();
-    size_t comulativeCitations = 0;
+    // Set point labels format and make them visible for citationSeries
+    citationSeries->setPointLabelsFormat("@yPoint");
+    citationSeries->setPointLabelsVisible(true);
+    citationSeries->setPointLabelsColor(Qt::black);
+    citationSeries->setPointLabelsClipping(false);
+    citationSeries->setPointLabelsFont(QFont("Arial", 15));
 
-    for (const auto &[x, y] : kqr._yearToCitations) {
-      comulativeCitations += y;
-      series1->append(x, comulativeCitations);
-      series2->append(x, y);
+    // Set point labels format and make them visible for rateOfChangeSeries
+    rateOfChangeSeries->setPointLabelsFormat("@yPoint");
+    rateOfChangeSeries->setPointLabelsVisible(true);
+    rateOfChangeSeries->setPointLabelsColor(Qt::black);
+    rateOfChangeSeries->setPointLabelsClipping(false);
+    rateOfChangeSeries->setPointLabelsFont(QFont("Arial", 15));
+
+    // Set point labels format and make them visible for impactFactorSeries
+    impactFactorSeries->setPointLabelsFormat("@yPoint");
+    impactFactorSeries->setPointLabelsVisible(true);
+    impactFactorSeries->setPointLabelsColor(Qt::black);
+    impactFactorSeries->setPointLabelsClipping(false);
+    impactFactorSeries->setPointLabelsFont(QFont("Arial", 15));
+
+    size_t cumulativeCitations = 0;
+
+    for (const auto &[year, citations] : kqr._yearToCitations) {
+      cumulativeCitations += citations;
+      citationSeries->append(year, cumulativeCitations);
+      rateOfChangeSeries->append(year, citations);
+
+      // Calculate impact factor
+      size_t numPapers =
+          kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 1;
+      double impactFactor = static_cast<double>(citations) / numPapers;
+      impactFactorSeries->append(year, impactFactor);
     }
 
     // Create a chart and set the series
     QChart *chart = new QChart();
-    chart->addSeries(series1);
-    chart->addSeries(series2);
+    chart->addSeries(citationSeries);
+    chart->addSeries(rateOfChangeSeries);
+    chart->addSeries(impactFactorSeries);  // Add the impact factor series
     chart->legend()->setVisible(true);
     chart->legend()->setAlignment(
         Qt::AlignBottom);  // Position legend at the bottom
@@ -322,19 +389,29 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     // Add a label for every year
     axisX->setTickCount(min_max.second->first - min_max.first->first + 1);
     chart->addAxis(axisX, Qt::AlignBottom);
-    series1->attachAxis(axisX);
-    series2->attachAxis(axisX);
+    citationSeries->attachAxis(axisX);
+    rateOfChangeSeries->attachAxis(axisX);
+    impactFactorSeries->attachAxis(
+        axisX);  // Attach the impact factor series to the axis
 
     QValueAxis *axisY = new QValueAxis;
     axisY->setLabelFormat("%d");
     axisY->setTitleText("Citations");
-    axisY->setRange(0, comulativeCitations + 1);  // Set the range of the axis
+    axisY->setRange(0, cumulativeCitations + 1);  // Set the range of the axis
     chart->addAxis(axisY, Qt::AlignLeft);
-    series1->attachAxis(axisY);
-    series2->attachAxis(axisY);
+    citationSeries->attachAxis(axisY);
+    rateOfChangeSeries->attachAxis(axisY);
 
-    series1->setName("Citations");
-    series2->setName("Rate of Change");
+    QValueAxis *axisY2 = new QValueAxis;
+    axisY2->setLabelFormat("%.2f");
+    axisY2->setTitleText("Impact Factor");
+    chart->addAxis(axisY2, Qt::AlignRight);
+    impactFactorSeries->attachAxis(
+        axisY2);  // Attach the impact factor series to the new axis
+
+    citationSeries->setName("Cumulative Citations");
+    rateOfChangeSeries->setName("Rate of Change");
+    impactFactorSeries->setName("Impact Factor");
 
     // Remove the title of the chart
     chart->setTitle(keyword);
@@ -351,6 +428,7 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
 
   adjustFontSizes();
 }
+
 void MainWindow::removeSelectedRows() {
   QModelIndexList selectedIndexes = tableView->selectionModel()->selectedRows();
 

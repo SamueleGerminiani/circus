@@ -27,6 +27,7 @@ class MainWindow : public QMainWindow {
   void resizeEvent(QResizeEvent *event) override;
   void addUnionOfSelectedRows();
   void removeSelectedRows();
+  void onMaxRowsSliderValueChanged(int value);
 
  private:
   QLineEdit *textBox;
@@ -34,6 +35,9 @@ class MainWindow : public QMainWindow {
   QStandardItemModel *model;
   QTimer *textChangedTimer;
   QTabWidget *tabWidget;
+
+  QSlider *maxRowsSlider;
+  int maxTabRows = 1000;  // Default maximum number of rows
 };
 
 void runGui(int argc, char *argv[]);

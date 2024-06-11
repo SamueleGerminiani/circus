@@ -310,6 +310,7 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
           word_to_kqr[keyword]._totalCitations += citations;
+          word_to_kqr[keyword]._yearToPapers[year].insert(doi);
         }
         word_to_kqr[keyword]._type.insert(KeywordType::AuthorKeyword);
         word_to_kqr[keyword]._papers.insert(doi);
@@ -334,6 +335,7 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
           word_to_kqr[keyword]._totalCitations += citations;
+          word_to_kqr[keyword]._yearToPapers[year].insert(doi);
         }
         word_to_kqr[keyword]._papers.insert(doi);
         word_to_kqr[keyword]._type.insert(KeywordType::IndexTerm);
@@ -357,6 +359,7 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
           word_to_kqr[keyword]._totalCitations += citations;
+          word_to_kqr[keyword]._yearToPapers[year].insert(doi);
         }
         word_to_kqr[keyword]._papers.insert(doi);
         word_to_kqr[keyword]._type.insert(KeywordType::SubjectArea);
