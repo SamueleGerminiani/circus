@@ -422,9 +422,15 @@ void addZScore(KeywordQueryResult& result) {
                    "for "
                    "year: " +
                        std::to_string(zSCoreYear));
-  size_t lastCitations = result._yearToCitations.at(zSCoreYear);
+  double lastYearCitations = result._yearToCitations.at(zSCoreYear);
+  double lastButOneYearCitations =
+      result._yearToCitations.count(zSCoreYear - 1)
+          ? result._yearToCitations.at(zSCoreYear - 1)
+          : lastYearCitations;
+  double avgCitations = (lastYearCitations + lastButOneYearCitations) / 2;
+
   if (stdDev != 0) {
-    result._zScore = (lastCitations - mean) / stdDev;
+    result._zScore = (avgCitations - mean) / stdDev;
   } else {
     result._zScore = 0;  // Avoid division by zero
   }

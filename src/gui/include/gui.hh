@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QLabel>
 #include <QLineEdit>
 #include <QListView>
 #include <QMainWindow>
@@ -30,11 +31,16 @@ class MainWindow : public QMainWindow {
   void onMaxRowsSliderValueChanged(int value);
 
  private:
+  void setSliderLimits(size_t max);
+
   QLineEdit *textBox;
   QTableView *tableView;
   QStandardItemModel *model;
   QTimer *textChangedTimer;
   QTabWidget *tabWidget;
+
+  QLabel *minLabel;
+  QLabel *maxLabel;
 
   QSlider *maxRowsSlider;
   int maxTabRows = 1000;  // Default maximum number of rows

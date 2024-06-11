@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "db.hh"
+#include "dbUtils.hh"
 #include "message.hh"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -46,8 +47,8 @@ void MainWindow::setupLayout() {
   maxRowsSlider->setValue(maxTabRows);  // Set default value
 
   // Initialize the labels for min and max values
-  QLabel *minLabel = new QLabel("1", this);
-  QLabel *maxLabel = new QLabel("10000", this);
+  minLabel = new QLabel("1", this);
+  maxLabel = new QLabel("10000", this);
 
   // Add the text box, min label, slider, and max label to the layout
   textBoxLayout->addWidget(minLabel);
@@ -103,6 +104,10 @@ void MainWindow::setupConnections() {
   // Connect the slider value change signal to the slot
   connect(maxRowsSlider, &QSlider::valueChanged, this,
           &MainWindow::onMaxRowsSliderValueChanged);
+}
+void MainWindow::setSliderLimits(size_t max) {
+  maxRowsSlider->setRange(1, max);  // Adjust range as needed
+  maxLabel->setText(QString::number(max));
 }
 
 void MainWindow::onMaxRowsSliderValueChanged(int value) {
@@ -189,9 +194,10 @@ void MainWindow::addUnionOfSelectedRows() {
     zScoreItem->setData(QColor(Qt::darkRed), Qt::BackgroundRole);
   }
   rowItems << zScoreItem;
-  model->appendRow(rowItems);
+  model->insertRow(0, rowItems);
 
   addKQR(unionResult);
+  setSliderLimits(model->rowCount());
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
@@ -313,6 +319,7 @@ void MainWindow::onTimerTimeout() {
 
   // Sort the table by the third column in descending order of citations
   tableView->sortByColumn(2, Qt::DescendingOrder);
+  setSliderLimits(kqr_vec.size());
 }
 void MainWindow::onTableClicked(const QModelIndex &index) {
   if (index.isValid() &&
@@ -362,10 +369,12 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     size_t cumulativeCitations = 0;
 
     for (const auto &[year, citations] : kqr._yearToCitations) {
+      if (year == getCurrentYear()) {
+        continue;  // Skip the current year
+      }
       cumulativeCitations += citations;
       citationSeries->append(year, cumulativeCitations);
       rateOfChangeSeries->append(year, citations);
-
       // Calculate impact factor
       size_t numPapers =
           kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 1;
@@ -385,8 +394,7 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     QValueAxis *axisX = new QValueAxis;
     axisX->setLabelFormat("%d");
     axisX->setTitleText("Year");
-    axisX->setRange(min_max.first->first, min_max.second->first);
-    // Add a label for every year
+    axisX->setRange(min_max.first->first, min_max.second->first - 1);
     axisX->setTickCount(min_max.second->first - min_max.first->first + 1);
     chart->addAxis(axisX, Qt::AlignBottom);
     citationSeries->attachAxis(axisX);
