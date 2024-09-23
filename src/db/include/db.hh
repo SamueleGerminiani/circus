@@ -4,7 +4,6 @@
 
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -35,6 +34,9 @@ struct KeywordQueryResult {
   size_t _totalCitations = 0;
   std::unordered_set<std::string> _papers;
   std::map<size_t, std::unordered_set<std::string>> _yearToPapers;
+  // these are require for the impact factor calculation
+  std::map<size_t, size_t>
+      _yearToCitationInYearOfPapersPublishedThePreviousTwoYears;
 };
 
 extern SQLite::Database db;

@@ -178,9 +178,17 @@ void MainWindow::addUnionOfSelectedRows() {
     for (const auto &[year, papers] : result._yearToPapers) {
       unionResult._yearToPapers[year].insert(papers.begin(), papers.end());
     }
+    for (const auto &[year, cit] :
+         result._yearToCitationInYearOfPapersPublishedThePreviousTwoYears) {
+      unionResult
+          ._yearToCitationInYearOfPapersPublishedThePreviousTwoYears[year] +=
+          cit;
+    }
+
     totalCitations += result._totalCitations;
     unionResult._papers.insert(result._papers.begin(), result._papers.end());
   }
+
   // remove trailing comma and space
   unionResult._word = unionResult._word.substr(0, unionResult._word.size() - 2);
   size_t maxChars = 50;
@@ -369,8 +377,8 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
 
     // Create series for citation data, rate of change, and impact factor
     QLineSeries *citationSeries = new QLineSeries();
-    QLineSeries *rateOfChangeSeries = new QLineSeries();
     QLineSeries *impactFactorSeries = new QLineSeries();
+    QLineSeries *numberOfPapersSeries = new QLineSeries();
 
     // Set point labels format and make them visible for citationSeries
     citationSeries->setPointLabelsFormat("@yPoint");
@@ -379,13 +387,6 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     citationSeries->setPointLabelsClipping(false);
     citationSeries->setPointLabelsFont(QFont("Arial", 15));
 
-    // Set point labels format and make them visible for rateOfChangeSeries
-    rateOfChangeSeries->setPointLabelsFormat("@yPoint");
-    rateOfChangeSeries->setPointLabelsVisible(true);
-    rateOfChangeSeries->setPointLabelsColor(Qt::black);
-    rateOfChangeSeries->setPointLabelsClipping(false);
-    rateOfChangeSeries->setPointLabelsFont(QFont("Arial", 15));
-
     // Set point labels format and make them visible for impactFactorSeries
     impactFactorSeries->setPointLabelsFormat("@yPoint");
     impactFactorSeries->setPointLabelsVisible(true);
@@ -393,26 +394,60 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     impactFactorSeries->setPointLabelsClipping(false);
     impactFactorSeries->setPointLabelsFont(QFont("Arial", 15));
 
-    size_t cumulativeCitations = 0;
+    // Set point labels format and make them visible for numberOfPapersSeries
+    numberOfPapersSeries->setPointLabelsFormat("@yPoint");
+    numberOfPapersSeries->setPointLabelsVisible(true);
+    numberOfPapersSeries->setPointLabelsColor(Qt::black);
+    numberOfPapersSeries->setPointLabelsClipping(false);
+    numberOfPapersSeries->setPointLabelsFont(QFont("Arial", 15));
+
+    size_t maxCitations = 0;
+    size_t maxPapers = 0;
 
     for (const auto &[year, citations] : kqr._yearToCitations) {
       if (year == getCurrentYear()) {
         continue;  // Skip the current year
       }
-      cumulativeCitations += citations;
-      citationSeries->append(year, cumulativeCitations);
-      rateOfChangeSeries->append(year, citations);
-      // Calculate impact factor
-      size_t numPapers =
-          kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 1;
-      double impactFactor = static_cast<double>(citations) / numPapers;
+
+      citationSeries->append(year, citations);
+      maxCitations = std::max(maxCitations, citations);
+
+      size_t newPapersThisYear =
+          kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 0;
+      numberOfPapersSeries->append(year, newPapersThisYear);
+      maxPapers = std::max(maxPapers, newPapersThisYear);
+
+      double impactFactor = 0;
+      if (year - min_max.first->first >= 2) {
+        size_t nPapersOneYearBefore =
+            kqr._yearToPapers.count(year - 1)
+                ? kqr._yearToPapers.at(year - 1).size()
+                : 0;
+        size_t nPapersTwoYearsBefore =
+            kqr._yearToPapers.count(year - 2)
+                ? kqr._yearToPapers.at(year - 2).size()
+                : 0;
+        messageErrorIf(
+            kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
+                .empty(),
+            "Missing data for impact factor calculation");
+        if (nPapersOneYearBefore + nPapersTwoYearsBefore > 0 &&
+            kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears.count(
+                year)) {
+          impactFactor =
+              static_cast<double>(
+                  kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
+                      .at(year)) /
+              (nPapersOneYearBefore + nPapersTwoYearsBefore);
+        }
+      }
       impactFactorSeries->append(year, impactFactor);
     }
 
     // Create a chart and set the series
     QChart *chart = new QChart();
     chart->addSeries(citationSeries);
-    chart->addSeries(rateOfChangeSeries);
+    chart->addSeries(numberOfPapersSeries);
     chart->addSeries(impactFactorSeries);  // Add the impact factor series
     chart->legend()->setVisible(true);
     chart->legend()->setAlignment(
@@ -425,17 +460,18 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     axisX->setTickCount(getCurrentYear() - 1 - min_max.first->first + 1);
     chart->addAxis(axisX, Qt::AlignBottom);
     citationSeries->attachAxis(axisX);
-    rateOfChangeSeries->attachAxis(axisX);
     impactFactorSeries->attachAxis(
         axisX);  // Attach the impact factor series to the axis
+    numberOfPapersSeries->attachAxis(axisX);
 
     QValueAxis *axisY = new QValueAxis;
     axisY->setLabelFormat("%d");
     axisY->setTitleText("Citations");
-    axisY->setRange(0, cumulativeCitations + 1);  // Set the range of the axis
+    axisY->setRange(
+        0, std::max(maxCitations, maxPapers) + 1);  // Set the range of the
+    // axis
     chart->addAxis(axisY, Qt::AlignLeft);
     citationSeries->attachAxis(axisY);
-    rateOfChangeSeries->attachAxis(axisY);
 
     QValueAxis *axisY2 = new QValueAxis;
     axisY2->setLabelFormat("%.2f");
@@ -444,8 +480,8 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     impactFactorSeries->attachAxis(
         axisY2);  // Attach the impact factor series to the new axis
 
-    citationSeries->setName("Cumulative Citations");
-    rateOfChangeSeries->setName("Rate of Change");
+    citationSeries->setName("Citations");
+    numberOfPapersSeries->setName("New papers");
     impactFactorSeries->setName("Impact Factor");
 
     // Remove the title of the chart
@@ -459,6 +495,10 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     int tabIndex = tabWidget->addTab(chartView, keyword);
     tabWidget->setCurrentIndex(tabIndex);
     tabWidget->show();  // Ensure the tab widget is shown when charts are added
+
+    // printTimeSeries(numberOfPapersSeries);
+    // printTimeSeries(citationSeries);
+    // printTimeSeries(impactFactorSeries);
   }
 
   adjustFontSizes();
