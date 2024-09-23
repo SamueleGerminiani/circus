@@ -43,7 +43,9 @@ int main(int arg, char *argv[]) {
       auto bev = parseBib(bf);
       for (bibtex::BibTeXEntry &e : bev) {
         DBPayload payload = toDBPayload(e);
-        insertPaper(payload);
+        if (payload.doi != "") {
+          insertPaper(payload);
+        }
       }
     }
   }

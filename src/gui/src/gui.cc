@@ -13,11 +13,13 @@
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
 #include <algorithm>
+#include <iostream>
 #include <vector>
 
 #include "db.hh"
 #include "dbUtils.hh"
 #include "message.hh"
+static void printTimeSeries(QLineSeries *series);
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -50,10 +52,21 @@ void MainWindow::setupLayout() {
   minLabel = new QLabel("1", this);
   maxLabel = new QLabel("10000", this);
 
+  // init checkboxes
+  indexTerm = new QCheckBox("Index term", this);
+  authorKeyword = new QCheckBox("Author keyword", this);
+  area = new QCheckBox("Area", this);
+  indexTerm->setChecked(true);
+  area->setChecked(true);
+  authorKeyword->setChecked(true);
+
   // Add the text box, min label, slider, and max label to the layout
   textBoxLayout->addWidget(minLabel);
   textBoxLayout->addWidget(maxRowsSlider);
   textBoxLayout->addWidget(maxLabel);
+  textBoxLayout->addWidget(authorKeyword);
+  textBoxLayout->addWidget(indexTerm);
+  textBoxLayout->addWidget(area);
 
   leftLayout->addLayout(textBoxLayout);
   leftLayout->addWidget(tableView);
@@ -95,8 +108,7 @@ void MainWindow::setupConnections() {
           &MainWindow::startTextChangedTimer);
 
   // Connect the timer's timeout signal to the slot
-  connect(textChangedTimer, &QTimer::timeout, this,
-          &MainWindow::onTimerTimeout);
+  connect(textChangedTimer, &QTimer::timeout, this, &MainWindow::updateTable);
 
   // Connect the table view click signal to the slot
   connect(tableView, &QTableView::clicked, this, &MainWindow::onTableClicked);
@@ -104,6 +116,12 @@ void MainWindow::setupConnections() {
   // Connect the slider value change signal to the slot
   connect(maxRowsSlider, &QSlider::valueChanged, this,
           &MainWindow::onMaxRowsSliderValueChanged);
+
+  // connect the checkboxes to upate the table
+  connect(authorKeyword, &QCheckBox::stateChanged, this,
+          &MainWindow::updateTable);
+  connect(indexTerm, &QCheckBox::stateChanged, this, &MainWindow::updateTable);
+  connect(area, &QCheckBox::stateChanged, this, &MainWindow::updateTable);
 }
 void MainWindow::setSliderLimits(size_t max) {
   maxRowsSlider->setRange(1, max);  // Adjust range as needed
@@ -112,7 +130,7 @@ void MainWindow::setSliderLimits(size_t max) {
 
 void MainWindow::onMaxRowsSliderValueChanged(int value) {
   maxTabRows = value;
-  onTimerTimeout();  // Refresh the table view with the new max rows value
+  updateTable();  // Refresh the table view with the new max rows value
 }
 
 void MainWindow::addUnionOfSelectedRows() {
@@ -270,7 +288,7 @@ void MainWindow::startTextChangedTimer() {
   textChangedTimer->start(1000);
 }
 
-void MainWindow::onTimerTimeout() {
+void MainWindow::updateTable() {
   std::vector<KeywordQueryResult> kqr_vec =
       searchKeywords(this->textBox->text().toStdString());
 
@@ -285,10 +303,19 @@ void MainWindow::onTimerTimeout() {
     QList<QStandardItem *> rowItems;
     rowItems << new QStandardItem(QString::fromStdString(kqr._word));
 
+    if (!((indexTerm->isChecked() && kqr._type.count(KeywordType::IndexTerm)) ||
+          (authorKeyword->isChecked() &&
+           kqr._type.count(KeywordType::AuthorKeyword)) ||
+          (area->isChecked() && kqr._type.count(KeywordType::SubjectArea)))) {
+      continue;
+    }
+
+    // build the string for the type
     std::string typeStr;
     for (auto type : kqr._type) {
       typeStr += toString(type) + ", ";
     }
+
     // Remove the trailing comma and space
     typeStr = typeStr.substr(0, typeStr.size() - 2);
 
@@ -328,11 +355,11 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     openDB();
     KeywordQueryResult kqr = getKQR(keyword.toStdString());
 
-    // Fix missing data with zeros
     auto min_max = std::minmax_element(
         kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
         [](const auto &a, const auto &b) { return a.first < b.first; });
 
+    // Fix missing data with zeros
     for (size_t year = min_max.first->first; year <= min_max.second->first;
          ++year) {
       if (kqr._yearToCitations.count(year) == 0) {
@@ -395,7 +422,7 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
     axisX->setLabelFormat("%d");
     axisX->setTitleText("Year");
     axisX->setRange(min_max.first->first, min_max.second->first - 1);
-    axisX->setTickCount(min_max.second->first - min_max.first->first + 1);
+    axisX->setTickCount(getCurrentYear() - 1 - min_max.first->first + 1);
     chart->addAxis(axisX, Qt::AlignBottom);
     citationSeries->attachAxis(axisX);
     rateOfChangeSeries->attachAxis(axisX);
@@ -435,6 +462,13 @@ void MainWindow::onTableClicked(const QModelIndex &index) {
   }
 
   adjustFontSizes();
+}
+
+void printTimeSeries(QLineSeries *series) {
+  for (int i = 0; i < series->count(); ++i) {
+    QPointF point = series->at(i);
+    std::cout << point.x() << " " << point.y() << std::endl;
+  }
 }
 
 void MainWindow::removeSelectedRows() {

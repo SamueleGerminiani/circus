@@ -265,7 +265,7 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
     }
   }
 
-  messageErrorIf(
+  messageWarningIf(
       payload.doi == "",
       "DOI/eid not found in BibTeX entry with title: " + payload.title);
 

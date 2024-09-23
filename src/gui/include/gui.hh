@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
@@ -20,7 +21,7 @@ class MainWindow : public QMainWindow {
 
  private slots:
   void startTextChangedTimer();
-  void onTimerTimeout();
+  void updateTable();
   void onTableClicked(const QModelIndex &index);
   void keyPressEvent(QKeyEvent *event) override;
   void adjustFontSizes();
@@ -38,6 +39,9 @@ class MainWindow : public QMainWindow {
   QStandardItemModel *model;
   QTimer *textChangedTimer;
   QTabWidget *tabWidget;
+  QCheckBox *indexTerm;
+  QCheckBox *area;
+  QCheckBox *authorKeyword;
 
   QLabel *minLabel;
   QLabel *maxLabel;
