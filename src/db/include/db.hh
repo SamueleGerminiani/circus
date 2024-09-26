@@ -48,6 +48,8 @@ void createDB();
 // Helper function to insert data into all related tables
 void insertPaper(const DBPayload& payload);
 
+std::vector<DBPayload> getPapers(std::string keyword);
+
 // Function to print the contents of the paper table
 void printPapers();
 

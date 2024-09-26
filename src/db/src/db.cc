@@ -55,6 +55,7 @@ void createDB() {
         "title TEXT NOT NULL, "
         "year INTEGER NOT NULL, "
         "authors_list TEXT NOT NULL, "
+        "abstract TEXT NOT NULL, "
         "total_citations INTEGER NOT NULL);");
 
     // Create the citations table
@@ -95,6 +96,111 @@ void createDB() {
   }
 }
 
+std::vector<DBPayload> getPapers(std::string keyword) {
+  std::vector<DBPayload> results;
+  std::set<std::string> unique_dois;
+
+  try {
+    // Prepare a query to search in index_term_paper
+    SQLite::Statement indexTermQuery(
+        db,
+        "SELECT paper.doi, paper.title, paper.year, paper.authors_list, "
+        "paper.abstract, paper.total_citations "
+        "FROM index_term_paper "
+        "JOIN paper ON index_term_paper.doi = paper.doi "
+        "WHERE index_term_paper.index_term = ?");
+
+    // Prepare a query to search in author_keyword_paper
+    SQLite::Statement authorKeywordQuery(
+        db,
+        "SELECT paper.doi, paper.title, paper.year, paper.authors_list, "
+        "paper.abstract, paper.total_citations "
+        "FROM author_keyword_paper "
+        "JOIN paper ON author_keyword_paper.doi = paper.doi "
+        "WHERE author_keyword_paper.author_keyword = ?");
+
+    // Prepare a query to search in area_paper
+    SQLite::Statement areaQuery(
+        db,
+        "SELECT paper.doi, paper.title, paper.year, paper.authors_list, "
+        "paper.abstract, paper.total_citations "
+        "FROM area_paper "
+        "JOIN paper ON area_paper.doi = paper.doi "
+        "WHERE area_paper.area = ?");
+
+    // Bind the exact keyword to all queries
+    indexTermQuery.bind(1, keyword);
+    authorKeywordQuery.bind(1, keyword);
+    areaQuery.bind(1, keyword);
+
+    // Helper lambda to populate DBPayload from query results
+    auto populatePayload = [&](SQLite::Statement& query) {
+      while (query.executeStep()) {
+        DBPayload payload;
+        payload.doi = query.getColumn(0).getString();
+        payload.title = query.getColumn(1).getString();
+        payload.year = query.getColumn(2).getInt();
+        payload.authors_list = query.getColumn(3).getString();
+        payload.abstract = query.getColumn(4).getString();
+        payload.total_citations = query.getColumn(5).getInt();
+
+        // Query for citations associated with the paper
+        SQLite::Statement citationQuery(
+            db, "SELECT year, number FROM citations WHERE doi = ?");
+        citationQuery.bind(1, payload.doi);
+        while (citationQuery.executeStep()) {
+          int year = citationQuery.getColumn(0).getInt();
+          int number = citationQuery.getColumn(1).getInt();
+          payload.citations.push_back({year, number});
+        }
+
+        // Query for index terms associated with the paper
+        SQLite::Statement indexTermQuery(
+            db, "SELECT index_term FROM index_term_paper WHERE doi = ?");
+        indexTermQuery.bind(1, payload.doi);
+        while (indexTermQuery.executeStep()) {
+          payload.index_terms.push_back(
+              indexTermQuery.getColumn(0).getString());
+        }
+
+        // Query for author keywords associated with the paper
+        SQLite::Statement authorKeywordQuery(
+            db,
+            "SELECT author_keyword FROM author_keyword_paper WHERE doi = ?");
+        authorKeywordQuery.bind(1, payload.doi);
+        while (authorKeywordQuery.executeStep()) {
+          payload.author_keywords.push_back(
+              authorKeywordQuery.getColumn(0).getString());
+        }
+
+        // Query for areas associated with the paper
+        SQLite::Statement areaQuery(
+            db, "SELECT area FROM area_paper WHERE doi = ?");
+        areaQuery.bind(1, payload.doi);
+        while (areaQuery.executeStep()) {
+          payload.areas.push_back(areaQuery.getColumn(0).getString());
+        }
+
+        if (!unique_dois.count(payload.doi)) {
+          // Add the populated payload to the results
+          results.push_back(payload);
+          unique_dois.insert(payload.doi);
+        }
+      }
+    };
+
+    // Execute all queries
+    populatePayload(indexTermQuery);
+    populatePayload(authorKeywordQuery);
+    populatePayload(areaQuery);
+
+  } catch (const std::exception& e) {
+    std::cerr << "Exception: " << e.what() << std::endl;
+  }
+
+  return results;
+}
+
 void insertPaper(const DBPayload& payload) {
   try {
     // Begin a transaction
@@ -104,13 +210,14 @@ void insertPaper(const DBPayload& payload) {
     {
       SQLite::Statement query(
           db,
-          "INSERT INTO paper (doi, title, year, authors_list, "
-          "total_citations) VALUES (?, ?, ?, ?, ?)");
+          "INSERT INTO paper (doi, title, year, authors_list, abstract, "
+          "total_citations) VALUES (?, ?, ?, ?, ?, ?)");
       query.bind(1, payload.doi);
       query.bind(2, payload.title);
       query.bind(3, payload.year);
       query.bind(4, payload.authors_list);
-      query.bind(5, payload.total_citations);
+      query.bind(5, payload.abstract);
+      query.bind(6, payload.total_citations);
       query.exec();
     }
 
@@ -252,6 +359,9 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
     } else if (field.first == "year") {
       payload.year =
           stoull(field.second.front());  // Assuming title is a single value
+    } else if (field.first == "abstract") {
+      payload.abstract =
+          field.second.front();  // Assuming asbtract is a single value
     } else if (field.first == "per_year_citations") {
       // Extract per-year citations as pairs of year and number
       for (const auto& citation : split(field.second.front(), ',')) {

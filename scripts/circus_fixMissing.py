@@ -144,6 +144,7 @@ def main():
         "author",
         "title",
         "year",
+        "abstract",
         "author_keywords",
         "index_terms",
         "subject_areas",
@@ -184,6 +185,9 @@ def main():
                 elif field == "index_terms":
                     if retrieved_data.idxterms:
                         entry[field] = ", ".join(retrieved_data.idxterms)
+                elif field == "abstract":
+                    if retrieved_data.abstract:
+                        entry[field] = retrieved_data.abstract
                 elif field == "subject_areas":
                     if retrieved_data.subject_areas:
                         subject_areas = []

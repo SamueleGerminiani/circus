@@ -1,13 +1,16 @@
 #include "gui.hh"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
-#include <QStandardItemModel>  // Include QStandardItemModel for the table
+#include <QStandardItemModel>
 #include <QTabWidget>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
@@ -16,9 +19,11 @@
 #include <iostream>
 #include <vector>
 
+#include "DBPayload.hh"
 #include "db.hh"
 #include "dbUtils.hh"
 #include "message.hh"
+
 static void printTimeSeries(QLineSeries *series);
 
 MainWindow::MainWindow(QWidget *parent)
@@ -356,152 +361,305 @@ void MainWindow::updateTable() {
   tableView->sortByColumn(2, Qt::DescendingOrder);
   setSliderLimits(kqr_vec.size());
 }
-void MainWindow::onTableClicked(const QModelIndex &index) {
-  if (index.isValid() &&
-      index.column() == 2) {  // Check if the third column is clicked
-    QString keyword = model->data(index.siblingAtColumn(0)).toString();
-    openDB();
-    KeywordQueryResult kqr = getKQR(keyword.toStdString());
+void MainWindow::openChartWindow(const QString &keyword) {
+  openDB();
+  KeywordQueryResult kqr = getKQR(keyword.toStdString());
 
-    auto min_max = std::minmax_element(
-        kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
-        [](const auto &a, const auto &b) { return a.first < b.first; });
+  auto min_max = std::minmax_element(
+      kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
+      [](const auto &a, const auto &b) { return a.first < b.first; });
 
-    // Fix missing data with zeros
-    for (size_t year = min_max.first->first; year <= min_max.second->first;
-         ++year) {
-      if (kqr._yearToCitations.count(year) == 0) {
-        kqr._yearToCitations.emplace(year, 0);
-      }
+  // Fix missing data with zeros
+  for (size_t year = min_max.first->first; year <= min_max.second->first;
+       ++year) {
+    if (kqr._yearToCitations.count(year) == 0) {
+      kqr._yearToCitations.emplace(year, 0);
     }
-
-    // Create series for citation data, rate of change, and impact factor
-    QLineSeries *citationSeries = new QLineSeries();
-    QLineSeries *impactFactorSeries = new QLineSeries();
-    QLineSeries *numberOfPapersSeries = new QLineSeries();
-
-    // Set point labels format and make them visible for citationSeries
-    citationSeries->setPointLabelsFormat("@yPoint");
-    citationSeries->setPointLabelsVisible(true);
-    citationSeries->setPointLabelsColor(Qt::black);
-    citationSeries->setPointLabelsClipping(false);
-    citationSeries->setPointLabelsFont(QFont("Arial", 15));
-
-    // Set point labels format and make them visible for impactFactorSeries
-    impactFactorSeries->setPointLabelsFormat("@yPoint");
-    impactFactorSeries->setPointLabelsVisible(true);
-    impactFactorSeries->setPointLabelsColor(Qt::black);
-    impactFactorSeries->setPointLabelsClipping(false);
-    impactFactorSeries->setPointLabelsFont(QFont("Arial", 15));
-
-    // Set point labels format and make them visible for numberOfPapersSeries
-    numberOfPapersSeries->setPointLabelsFormat("@yPoint");
-    numberOfPapersSeries->setPointLabelsVisible(true);
-    numberOfPapersSeries->setPointLabelsColor(Qt::black);
-    numberOfPapersSeries->setPointLabelsClipping(false);
-    numberOfPapersSeries->setPointLabelsFont(QFont("Arial", 15));
-
-    size_t maxCitations = 0;
-    size_t maxPapers = 0;
-
-    for (const auto &[year, citations] : kqr._yearToCitations) {
-      if (year == getCurrentYear()) {
-        continue;  // Skip the current year
-      }
-
-      citationSeries->append(year, citations);
-      maxCitations = std::max(maxCitations, citations);
-
-      size_t newPapersThisYear =
-          kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 0;
-      numberOfPapersSeries->append(year, newPapersThisYear);
-      maxPapers = std::max(maxPapers, newPapersThisYear);
-
-      double impactFactor = 0;
-      if (year - min_max.first->first >= 2) {
-        size_t nPapersOneYearBefore =
-            kqr._yearToPapers.count(year - 1)
-                ? kqr._yearToPapers.at(year - 1).size()
-                : 0;
-        size_t nPapersTwoYearsBefore =
-            kqr._yearToPapers.count(year - 2)
-                ? kqr._yearToPapers.at(year - 2).size()
-                : 0;
-        messageErrorIf(
-            kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
-                .empty(),
-            "Missing data for impact factor calculation");
-        if (nPapersOneYearBefore + nPapersTwoYearsBefore > 0 &&
-            kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears.count(
-                year)) {
-          impactFactor =
-              static_cast<double>(
-                  kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
-                      .at(year)) /
-              (nPapersOneYearBefore + nPapersTwoYearsBefore);
-        }
-      }
-      impactFactorSeries->append(year, impactFactor);
-    }
-
-    // Create a chart and set the series
-    QChart *chart = new QChart();
-    chart->addSeries(citationSeries);
-    chart->addSeries(numberOfPapersSeries);
-    chart->addSeries(impactFactorSeries);  // Add the impact factor series
-    chart->legend()->setVisible(true);
-    chart->legend()->setAlignment(
-        Qt::AlignBottom);  // Position legend at the bottom
-
-    QValueAxis *axisX = new QValueAxis;
-    axisX->setLabelFormat("%d");
-    axisX->setTitleText("Year");
-    axisX->setRange(min_max.first->first, min_max.second->first - 1);
-    axisX->setTickCount(getCurrentYear() - 1 - min_max.first->first + 1);
-    chart->addAxis(axisX, Qt::AlignBottom);
-    citationSeries->attachAxis(axisX);
-    impactFactorSeries->attachAxis(
-        axisX);  // Attach the impact factor series to the axis
-    numberOfPapersSeries->attachAxis(axisX);
-
-    QValueAxis *axisY = new QValueAxis;
-    axisY->setLabelFormat("%d");
-    axisY->setTitleText("Citations");
-    axisY->setRange(
-        0, std::max(maxCitations, maxPapers) + 1);  // Set the range of the
-    // axis
-    chart->addAxis(axisY, Qt::AlignLeft);
-    citationSeries->attachAxis(axisY);
-
-    QValueAxis *axisY2 = new QValueAxis;
-    axisY2->setLabelFormat("%.2f");
-    axisY2->setTitleText("Impact Factor");
-    chart->addAxis(axisY2, Qt::AlignRight);
-    impactFactorSeries->attachAxis(
-        axisY2);  // Attach the impact factor series to the new axis
-
-    citationSeries->setName("Citations");
-    numberOfPapersSeries->setName("New papers");
-    impactFactorSeries->setName("Impact Factor");
-
-    // Remove the title of the chart
-    chart->setTitle(keyword);
-
-    // Create a chart view and set the chart
-    QChartView *chartView = new QChartView(chart);
-    chartView->setRenderHint(QPainter::Antialiasing);
-
-    // Add the chart view as a new tab
-    int tabIndex = tabWidget->addTab(chartView, keyword);
-    tabWidget->setCurrentIndex(tabIndex);
-    tabWidget->show();  // Ensure the tab widget is shown when charts are added
-
-    // printTimeSeries(numberOfPapersSeries);
-    // printTimeSeries(citationSeries);
-    // printTimeSeries(impactFactorSeries);
   }
 
-  adjustFontSizes();
+  // Create series for citation data, rate of change, and impact factor
+  QLineSeries *citationSeries = new QLineSeries();
+  QLineSeries *impactFactorSeries = new QLineSeries();
+  QLineSeries *numberOfPapersSeries = new QLineSeries();
+
+  // Set point labels format and make them visible for citationSeries
+  citationSeries->setPointLabelsFormat("@yPoint");
+  citationSeries->setPointLabelsVisible(true);
+  citationSeries->setPointLabelsColor(Qt::black);
+  citationSeries->setPointLabelsClipping(false);
+  citationSeries->setPointLabelsFont(QFont("Arial", 15));
+
+  // Set point labels format and make them visible for impactFactorSeries
+  impactFactorSeries->setPointLabelsFormat("@yPoint");
+  impactFactorSeries->setPointLabelsVisible(true);
+  impactFactorSeries->setPointLabelsColor(Qt::black);
+  impactFactorSeries->setPointLabelsClipping(false);
+  impactFactorSeries->setPointLabelsFont(QFont("Arial", 15));
+
+  // Set point labels format and make them visible for numberOfPapersSeries
+  numberOfPapersSeries->setPointLabelsFormat("@yPoint");
+  numberOfPapersSeries->setPointLabelsVisible(true);
+  numberOfPapersSeries->setPointLabelsColor(Qt::black);
+  numberOfPapersSeries->setPointLabelsClipping(false);
+  numberOfPapersSeries->setPointLabelsFont(QFont("Arial", 15));
+
+  size_t maxCitations = 0;
+  size_t maxPapers = 0;
+
+  for (const auto &[year, citations] : kqr._yearToCitations) {
+    if (year == getCurrentYear()) {
+      continue;  // Skip the current year
+    }
+
+    citationSeries->append(year, citations);
+    maxCitations = std::max(maxCitations, citations);
+
+    size_t newPapersThisYear =
+        kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 0;
+    numberOfPapersSeries->append(year, newPapersThisYear);
+    maxPapers = std::max(maxPapers, newPapersThisYear);
+
+    double impactFactor = 0;
+    if (year - min_max.first->first >= 2) {
+      size_t nPapersOneYearBefore = kqr._yearToPapers.count(year - 1)
+                                        ? kqr._yearToPapers.at(year - 1).size()
+                                        : 0;
+      size_t nPapersTwoYearsBefore = kqr._yearToPapers.count(year - 2)
+                                         ? kqr._yearToPapers.at(year - 2).size()
+                                         : 0;
+      messageErrorIf(
+          kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears.empty(),
+          "Missing data for impact factor calculation");
+      if (nPapersOneYearBefore + nPapersTwoYearsBefore > 0 &&
+          kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears.count(
+              year)) {
+        impactFactor =
+            static_cast<double>(
+                kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
+                    .at(year)) /
+            (nPapersOneYearBefore + nPapersTwoYearsBefore);
+      }
+    }
+    impactFactorSeries->append(year, impactFactor);
+  }
+
+  // Create a chart and set the series
+  QChart *chart = new QChart();
+  chart->addSeries(citationSeries);
+  chart->addSeries(numberOfPapersSeries);
+  chart->addSeries(impactFactorSeries);  // Add the impact factor series
+  chart->legend()->setVisible(true);
+  chart->legend()->setAlignment(
+      Qt::AlignBottom);  // Position legend at the bottom
+
+  QValueAxis *axisX = new QValueAxis;
+  axisX->setLabelFormat("%d");
+  axisX->setTitleText("Year");
+  axisX->setRange(min_max.first->first, min_max.second->first - 1);
+  axisX->setTickCount(getCurrentYear() - 1 - min_max.first->first + 1);
+  chart->addAxis(axisX, Qt::AlignBottom);
+  citationSeries->attachAxis(axisX);
+  impactFactorSeries->attachAxis(
+      axisX);  // Attach the impact factor series to the axis
+  numberOfPapersSeries->attachAxis(axisX);
+
+  QValueAxis *axisY = new QValueAxis;
+  axisY->setLabelFormat("%d");
+  axisY->setTitleText("Citations");
+  axisY->setRange(
+      0, std::max(maxCitations, maxPapers) + 1);  // Set the range of the
+  // axis
+  chart->addAxis(axisY, Qt::AlignLeft);
+  citationSeries->attachAxis(axisY);
+
+  QValueAxis *axisY2 = new QValueAxis;
+  axisY2->setLabelFormat("%.2f");
+  axisY2->setTitleText("Impact Factor");
+  chart->addAxis(axisY2, Qt::AlignRight);
+  impactFactorSeries->attachAxis(
+      axisY2);  // Attach the impact factor series to the new axis
+
+  citationSeries->setName("Citations");
+  numberOfPapersSeries->setName("New papers");
+  impactFactorSeries->setName("Impact Factor");
+
+  // Remove the title of the chart
+  chart->setTitle(keyword);
+
+  // Create a chart view and set the chart
+  QChartView *chartView = new QChartView(chart);
+  chartView->setRenderHint(QPainter::Antialiasing);
+
+  // Add the chart view as a new tab
+  int tabIndex = tabWidget->addTab(chartView, keyword);
+  tabWidget->setCurrentIndex(tabIndex);
+  tabWidget->show();  // Ensure the tab widget is shown when charts are added
+
+  // printTimeSeries(numberOfPapersSeries);
+  // printTimeSeries(citationSeries);
+  // printTimeSeries(impactFactorSeries);
+}
+void MainWindow::openListOfPapers(const std::string &keyword) {
+  // Fetch the papers using the keyword
+  std::vector<DBPayload> papers = getPapers(keyword);
+
+  // Create a new QTableWidget
+  QTableWidget *table = new QTableWidget();
+  table->setRowCount(static_cast<int>(papers.size()));
+  table->setColumnCount(
+      7);  // DOI, Title, Authors, Year, Total Citations, Keywords, Abstract
+
+  // Set the column headers
+  QStringList headers;
+  headers << "DOI"
+          << "Title"
+          << "Authors"
+          << "Year"
+          << "Total Citations"
+          << "Keywords"
+          << "Abstract";
+  table->setHorizontalHeaderLabels(headers);
+
+  // Populate the table with paper data
+  int row = 0;
+  for (const DBPayload &paper : papers) {
+    // DOI
+    table->setItem(row, 0,
+                   new QTableWidgetItem(QString::fromStdString(paper.doi)));
+
+    // Title
+    table->setItem(row, 1,
+                   new QTableWidgetItem(QString::fromStdString(paper.title)));
+
+    // Authors
+    table->setItem(
+        row, 2,
+        new QTableWidgetItem(QString::fromStdString(paper.authors_list)));
+
+    // Year
+    table->setItem(row, 3, new QTableWidgetItem(QString::number(paper.year)));
+
+    // Total Citations
+    table->setItem(
+        row, 4, new QTableWidgetItem(QString::number(paper.total_citations)));
+
+    // Keywords (combining index terms and author keywords)
+    std::string keywords;
+    std::set<std::string> unique_keywords;
+    for (const auto &index_term : paper.index_terms) {
+      unique_keywords.insert(index_term);
+    }
+    for (const auto &author_keyword : paper.author_keywords) {
+      unique_keywords.insert(author_keyword);
+    }
+    // Remove trailing comma and space
+    if (!keywords.empty()) {
+      keywords = keywords.substr(0, keywords.size() - 2);
+    }
+    for (const auto &keyword : unique_keywords) {
+      keywords += keyword + ", ";
+    }
+    if (!keywords.empty()) {
+      keywords = keywords.substr(0, keywords.size() - 2);
+    }
+    table->setItem(row, 5,
+                   new QTableWidgetItem(QString::fromStdString(keywords)));
+
+    // Abstract
+    table->setItem(
+        row, 6, new QTableWidgetItem(QString::fromStdString(paper.abstract)));
+
+    row++;
+  }
+
+  // Adjust table properties
+  table->resizeColumnsToContents();
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);  // Disable editing
+
+  // Create a layout for the new tab
+  QWidget *tab = new QWidget();
+  QVBoxLayout *layout = new QVBoxLayout();
+  layout->addWidget(table);
+  tab->setLayout(layout);
+
+  // Add the new tab to the tabWidget
+  QString tabTitle = QString::fromStdString("Papers for keyword: " + keyword);
+  int tabIndex = tabWidget->addTab(tab, tabTitle);
+  tabWidget->setCurrentIndex(tabIndex);
+  tabWidget->show();
+
+  // Connect the table view click signal to the slot
+  connect(table, &QTableWidget::clicked, this,
+          &MainWindow::onPapersTableClicked);
+}
+
+void MainWindow::onPapersTableClicked(const QModelIndex &index) {
+  // Retrieve the sender widget (the QTableWidget that was clicked)
+  QTableWidget *table = qobject_cast<QTableWidget *>(sender());
+
+  // Ensure the table exists and the index is valid
+  if (!table || !index.isValid()) return;
+
+  // Retrieve the selected row and column
+  int row = index.row();
+  int column = index.column();
+
+  // If the clicked column is the abstract column (assuming abstract is in
+  // column 6)
+  if (true || column == 6) {
+    // Get the abstract from the abstract column
+    QString abstract = table->item(row, 6)->text();
+
+    // Create a new QWidget for the new tab
+    QWidget *tab = new QWidget();
+    QVBoxLayout *layout = new QVBoxLayout();
+
+    // Create a QLabel to display the abstract text in big font
+    QLabel *abstractLabel = new QLabel(abstract);
+    abstractLabel->setWordWrap(true);  // Wrap text to fit the widget
+    QFont font = abstractLabel->font();
+    font.setPointSize(27);  // Set a larger font size
+    abstractLabel->setFont(font);
+
+    // Create a QPushButton to copy the abstract to clipboard
+    QPushButton *copyButton = new QPushButton("Copy Abstract to Clipboard");
+
+    // Connect the button's clicked signal to a lambda that copies the abstract
+    connect(copyButton, &QPushButton::clicked, this, [abstract]() {
+      QClipboard *clipboard = QApplication::clipboard();
+      clipboard->setText(abstract);  // Copy the abstract text to the clipboard
+    });
+
+    // Add the label and button to the layout
+    layout->addWidget(abstractLabel);
+    layout->addWidget(copyButton);
+    tab->setLayout(layout);
+
+    // Add the new tab to the tabWidget with a title based on the paper's title
+    // or DOI
+    //    QString doi = table->item(row, 0)->text();  // Assuming DOI is in
+    //    column 0
+    QString title =
+        table->item(row, 1)->text();  // Assuming title is in column 1
+    QString tabTitle = "Abstract - " + title;
+    // Add the table as a new tab
+    int tabIndex = tabWidget->addTab(tab, tabTitle);
+    tabWidget->setCurrentIndex(tabIndex);
+    tabWidget->show();
+  }
+}
+
+void MainWindow::onTableClicked(const QModelIndex &index) {
+  if (index.isValid()) {
+    if (index.column() == 0) {  // Check if the first column is clicked
+      openListOfPapers(
+          model->data(index.siblingAtColumn(0)).toString().toStdString());
+    } else if (index.column() == 2) {  // Check if the third column is clicked
+      openChartWindow(model->data(index.siblingAtColumn(0)).toString());
+    }
+
+    adjustFontSizes();
+  }
 }
 
 void printTimeSeries(QLineSeries *series) {

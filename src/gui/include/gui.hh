@@ -23,6 +23,8 @@ class MainWindow : public QMainWindow {
   void startTextChangedTimer();
   void updateTable();
   void onTableClicked(const QModelIndex &index);
+  void openChartWindow(const QString &keyword);
+  void openListOfPapers(const std::string &keyword);
   void keyPressEvent(QKeyEvent *event) override;
   void adjustFontSizes();
 
@@ -30,6 +32,7 @@ class MainWindow : public QMainWindow {
   void addUnionOfSelectedRows();
   void removeSelectedRows();
   void onMaxRowsSliderValueChanged(int value);
+  void onPapersTableClicked(const QModelIndex &index);
 
  private:
   void setSliderLimits(size_t max);

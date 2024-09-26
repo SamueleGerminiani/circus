@@ -6,6 +6,7 @@ struct DBPayload {
   std::string doi;
   std::string title;
   std::string authors_list;
+  std::string abstract;
   int year = 0;
   int total_citations = 0;
   std::vector<std::pair<int, int>> citations;
