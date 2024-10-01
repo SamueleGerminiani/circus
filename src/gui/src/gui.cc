@@ -15,90 +15,99 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
-#include <algorithm>
-#include <iostream>
-#include <vector>
 
-#include "DBPayload.hh"
-#include "db.hh"
-#include "dbUtils.hh"
 #include "message.hh"
 
 static void printTimeSeries(QLineSeries *series);
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent),
-      textBox(new QLineEdit(this)),
-      tableView(new QTableView(this)),
-      model(new QStandardItemModel(0, 4, this)),
-      textChangedTimer(new QTimer(this)),
-      tabWidget(new QTabWidget(this)) {
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setupLayout();
   setupConnections();
 }
 
 void MainWindow::setupLayout() {
+  keySearch_textBox = new QLineEdit(this);
+  keywords_tableView = new QTableView(this);
   // Set up the layout
   QWidget *centralWidget = new QWidget(this);
-  QHBoxLayout *mainLayout = new QHBoxLayout(centralWidget);
 
+  //  Create a splitter to divide the left and right sections
+  splitter = new QSplitter(Qt::Horizontal, centralWidget);
+  // The initial sizes for the splitter (adjust as needed)
+  splitter->setStretchFactor(0, 1);  // Make left side stretchable
+  splitter->setStretchFactor(1, 2);  // Make right side stretchable
+  // Set the splitter as the central widget
+  setCentralWidget(splitter);
+
+  // Left part ------------------------------------------------------
+
+  // Set up the table view
+  keywordsTab_model = new QStandardItemModel(0, 4, this);
+  // Set headers for the table
+  keywordsTab_model->setHeaderData(0, Qt::Horizontal, "Keyword");
+  keywordsTab_model->setHeaderData(1, Qt::Horizontal, "Type");
+  keywordsTab_model->setHeaderData(2, Qt::Horizontal, "Total Citations");
+  keywordsTab_model->setHeaderData(3, Qt::Horizontal, "z-score");
+  // Set the keywordsTab_model for the table view
+  keywords_tableView->setModel(keywordsTab_model);
+  // Set the table to be non-editable
+  keywords_tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  // Enable sorting on the table view
+  keywords_tableView->setSortingEnabled(true);
+
+  // create a timer to update the table
+  textChanged_timer = new QTimer(this);
+
+  // Left layout: Text box, slider, labels, checkboxes, and table view
   QVBoxLayout *leftLayout = new QVBoxLayout();
 
   // Create a horizontal layout to hold the text box and slider
-  QHBoxLayout *textBoxLayout = new QHBoxLayout();
-  textBoxLayout->addWidget(textBox);
+  QHBoxLayout *textSlider_hlayout = new QHBoxLayout();
+  textSlider_hlayout->addWidget(keySearch_textBox);
 
   // Initialize the slider
-  maxRowsSlider = new QSlider(Qt::Horizontal, this);
-  maxRowsSlider->setRange(1, 10000);    // Adjust range as needed
-  maxRowsSlider->setValue(maxTabRows);  // Set default value
+  maxRows_slider = new QSlider(Qt::Horizontal, this);
+  maxRows_slider->setRange(1, 10000);    // Adjust range as needed
+  maxRows_slider->setValue(maxTabRows);  // Set default value
 
   // Initialize the labels for min and max values
-  minLabel = new QLabel("1", this);
-  maxLabel = new QLabel("10000", this);
+  min_label = new QLabel("1", this);
+  max_label = new QLabel("10000", this);
 
-  // init checkboxes
-  indexTerm = new QCheckBox("Index term", this);
-  authorKeyword = new QCheckBox("Author keyword", this);
-  area = new QCheckBox("Area", this);
-  indexTerm->setChecked(true);
-  area->setChecked(true);
-  authorKeyword->setChecked(true);
+  // Initialize checkboxes
+  indexTerm_checkbox = new QCheckBox("Index term", this);
+  authorKeyword_checkbox = new QCheckBox("Author keyword", this);
+  area_checkbox = new QCheckBox("Area", this);
+  indexTerm_checkbox->setChecked(true);
+  area_checkbox->setChecked(true);
+  authorKeyword_checkbox->setChecked(true);
 
   // Add the text box, min label, slider, and max label to the layout
-  textBoxLayout->addWidget(minLabel);
-  textBoxLayout->addWidget(maxRowsSlider);
-  textBoxLayout->addWidget(maxLabel);
-  textBoxLayout->addWidget(authorKeyword);
-  textBoxLayout->addWidget(indexTerm);
-  textBoxLayout->addWidget(area);
+  textSlider_hlayout->addWidget(min_label);
+  textSlider_hlayout->addWidget(maxRows_slider);
+  textSlider_hlayout->addWidget(max_label);
+  textSlider_hlayout->addWidget(authorKeyword_checkbox);
+  textSlider_hlayout->addWidget(indexTerm_checkbox);
+  textSlider_hlayout->addWidget(area_checkbox);
 
-  leftLayout->addLayout(textBoxLayout);
-  leftLayout->addWidget(tableView);
+  // Add textSlider_hlayout and keywords_tableView to the left layout
+  leftLayout->addLayout(textSlider_hlayout);
+  leftLayout->addWidget(keywords_tableView);
 
-  mainLayout->addLayout(leftLayout);
-  mainLayout->addWidget(tabWidget);
+  // Create a container widget for the left layout
+  QWidget *leftWidget = new QWidget();
+  leftWidget->setLayout(leftLayout);
 
-  setCentralWidget(centralWidget);
+  // Add the left widget to the splitter
+  splitter->addWidget(leftWidget);
 
-  // Set the model for the table view
-  tableView->setModel(model);
-
-  // Set headers for the table
-  model->setHeaderData(0, Qt::Horizontal, "Keyword");
-  model->setHeaderData(1, Qt::Horizontal, "Type");
-  model->setHeaderData(2, Qt::Horizontal, "Total Citations");
-  model->setHeaderData(3, Qt::Horizontal, "z-score");
-
-  // Set the table to be non-editable
-  tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-
+  // Right part ------------------------------------------------------
+  tabWidget = new QTabWidget(this);
   // Make the tabs closable and movable
   tabWidget->setTabsClosable(true);
   tabWidget->setMovable(true);
-
-  // Enable sorting on the table view
-  tableView->setSortingEnabled(true);
+  // Add the right widget to the splitter
+  splitter->addWidget(tabWidget);
 }
 
 void MainWindow::setupConnections() {
@@ -106,129 +115,30 @@ void MainWindow::setupConnections() {
           &QTabWidget::removeTab);
 
   // Create a timer with a single-shot mode
-  textChangedTimer->setSingleShot(true);
+  textChanged_timer->setSingleShot(true);
 
   // Connect the text changed signal to the slot
-  connect(textBox, &QLineEdit::textChanged, this,
+  connect(keySearch_textBox, &QLineEdit::textChanged, this,
           &MainWindow::startTextChangedTimer);
 
   // Connect the timer's timeout signal to the slot
-  connect(textChangedTimer, &QTimer::timeout, this, &MainWindow::updateTable);
+  connect(textChanged_timer, &QTimer::timeout, this, &MainWindow::updateTable);
 
   // Connect the table view click signal to the slot
-  connect(tableView, &QTableView::clicked, this, &MainWindow::onTableClicked);
+  connect(keywords_tableView, &QTableView::clicked, this,
+          &MainWindow::onTableClicked);
 
   // Connect the slider value change signal to the slot
-  connect(maxRowsSlider, &QSlider::valueChanged, this,
+  connect(maxRows_slider, &QSlider::valueChanged, this,
           &MainWindow::onMaxRowsSliderValueChanged);
 
   // connect the checkboxes to upate the table
-  connect(authorKeyword, &QCheckBox::stateChanged, this,
+  connect(authorKeyword_checkbox, &QCheckBox::stateChanged, this,
           &MainWindow::updateTable);
-  connect(indexTerm, &QCheckBox::stateChanged, this, &MainWindow::updateTable);
-  connect(area, &QCheckBox::stateChanged, this, &MainWindow::updateTable);
-}
-void MainWindow::setSliderLimits(size_t max) {
-  maxRowsSlider->setRange(1, max);  // Adjust range as needed
-  maxLabel->setText(QString::number(max));
-}
-
-void MainWindow::onMaxRowsSliderValueChanged(int value) {
-  maxTabRows = value;
-  updateTable();  // Refresh the table view with the new max rows value
-}
-
-void MainWindow::addUnionOfSelectedRows() {
-  QModelIndexList selectedIndexes = tableView->selectionModel()->selectedRows();
-
-  if (selectedIndexes.size() < 2) {
-    // No selected rows, do nothing
-    return;
-  }
-
-  std::vector<KeywordQueryResult> searchResults =
-      searchKeywords(textBox->text().toStdString());
-
-  std::vector<KeywordQueryResult> selected_keywords;
-  for (const QModelIndex &index : selectedIndexes) {
-    int row = index.row();
-    QString word = model->data(model->index(row, 0)).toString();
-
-    auto found = std::find_if(searchResults.begin(), searchResults.end(),
-                              [&word](const KeywordQueryResult &kqr) {
-                                return kqr._word == word.toStdString();
-                              });
-    messageErrorIf(found == searchResults.end(),
-                   "Selected row not found in search results");
-    selected_keywords.push_back(*found);
-  }
-
-  // Initialize a new KeywordQueryResult to store the union
-  KeywordQueryResult unionResult;
-  unionResult._word = "";
-  unionResult._type.clear();
-  unionResult._yearToCitations.clear();
-  unionResult._papers.clear();
-
-  // Collect the union of types and other fields from selected rows
-  size_t totalCitations = 0;
-  for (const auto &result : selected_keywords) {
-    unionResult._word += result._word + ", ";
-    for (auto type : result._type) {
-      unionResult._type.insert(type);
-    }
-    for (const auto &[year, citations] : result._yearToCitations) {
-      unionResult._yearToCitations[year] += citations;
-    }
-    for (const auto &[year, papers] : result._yearToPapers) {
-      unionResult._yearToPapers[year].insert(papers.begin(), papers.end());
-    }
-    for (const auto &[year, cit] :
-         result._yearToCitationInYearOfPapersPublishedThePreviousTwoYears) {
-      unionResult
-          ._yearToCitationInYearOfPapersPublishedThePreviousTwoYears[year] +=
-          cit;
-    }
-
-    totalCitations += result._totalCitations;
-    unionResult._papers.insert(result._papers.begin(), result._papers.end());
-  }
-
-  // remove trailing comma and space
-  unionResult._word = unionResult._word.substr(0, unionResult._word.size() - 2);
-  size_t maxChars = 50;
-  if (unionResult._word.size() > maxChars) {
-    unionResult._word = unionResult._word.substr(0, maxChars) + "...";
-  }
-  unionResult._totalCitations = totalCitations;
-
-  // Recalculate z-score
-  addZScore(unionResult);
-
-  // Add the union result to the table
-  QList<QStandardItem *> rowItems;
-  rowItems << new QStandardItem(QString::fromStdString(unionResult._word));
-  std::string typeStr;
-  for (auto type : unionResult._type) {
-    typeStr += toString(type) + ", ";
-  }
-  // Remove the trailing comma and space
-  typeStr = typeStr.substr(0, typeStr.size() - 2);
-
-  rowItems << new QStandardItem(QString::fromStdString(typeStr));
-  rowItems << new QStandardItem(QString::number(unionResult._totalCitations));
-  QStandardItem *zScoreItem =
-      new QStandardItem(QString::number(unionResult._zScore));
-  if (unionResult._zScore >= 1.f) {
-    zScoreItem->setData(QColor(Qt::darkGreen), Qt::BackgroundRole);
-  } else if (unionResult._zScore < -1.f) {
-    zScoreItem->setData(QColor(Qt::darkRed), Qt::BackgroundRole);
-  }
-  rowItems << zScoreItem;
-  model->insertRow(0, rowItems);
-
-  addKQR(unionResult);
-  setSliderLimits(model->rowCount());
+  connect(indexTerm_checkbox, &QCheckBox::stateChanged, this,
+          &MainWindow::updateTable);
+  connect(area_checkbox, &QCheckBox::stateChanged, this,
+          &MainWindow::updateTable);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
@@ -240,444 +150,177 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     // Close the current tab when Ctrl + W is pressed
     tabWidget->removeTab(tabWidget->currentIndex());
   } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_Minus) {
+    // Close the current tab when Ctrl + - is pressed
+    decreaseSize();
+  } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_Equal) {
+    // Close the current tab when Ctrl + = is pressed
+    increaseSize();
+  } else if (event->modifiers() == Qt::ControlModifier &&
              event->key() == Qt::Key_Backspace) {
     // Remove selected rows when Ctrl + Backspace is pressed
     removeSelectedRows();
   } else if (event->modifiers() == Qt::ControlModifier &&
              event->key() == Qt::Key_A) {
     // Select all rows in the table
-    tableView->selectAll();
+    keywords_tableView->selectAll();
+  } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_L) {
+    if (splitter->sizes()[0] != 0) {
+      // Set the splitter sizes: left minimized, right maximized
+      QList<int> sizes;
+      sizes
+          << 0
+          << 1;  // 0 width for the left widget, full width for the right widget
+      splitter->setSizes(sizes);
+      splitter->update();
+    } else {
+      // Set the splitter sizes: left minimized, right maximized
+      QList<int> sizes;
+      sizes
+          << 1
+          << 0;  // 0 width for the left widget, full width for the right widget
+      splitter->setSizes(sizes);
+      splitter->update();
+    }
+  } else if (event->modifiers() == Qt::ControlModifier &&
+             event->key() == Qt::Key_K) {
+    // Set the splitter sizes: left minimized, right maximized
+    QList<int> sizes;
+    sizes << 1
+          << 1;  // 0 width for the left widget, full width for the right widget
+    splitter->setSizes(sizes);
+    splitter->update();
   } else {
     // Handle other key events
     QMainWindow::keyPressEvent(event);
   }
 }
 
-MainWindow::~MainWindow() {
-  delete textBox;
-  delete tableView;
-  delete model;
-  delete textChangedTimer;
-  delete tabWidget;
-}
+MainWindow::~MainWindow() {}
 void MainWindow::resizeEvent(QResizeEvent *event) {
   QMainWindow::resizeEvent(event);
-  adjustFontSizes();
 }
 
-// Custom slot to adjust font size of all text-containing widgets based on
-// window size
-void MainWindow::adjustFontSizes() {
-  int windowWidth = this->width();  // Get current window width
+void MainWindow::decreaseSize() {
+  int decrement = 2;
+
+  int reference_labelSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QLabel *label = qobject_cast<QLabel *>(widget)) {
+      // get size of the font
+      int labelSize = label->font().pointSize();
+      reference_labelSize = std::max(reference_labelSize, labelSize);
+    }
+  }
+  int reference_buttonSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QPushButton *button = qobject_cast<QPushButton *>(widget)) {
+      // get size of the font
+      int labelSize = button->font().pointSize();
+      reference_buttonSize = std::max(reference_buttonSize, labelSize);
+    }
+  }
+  int reference_lineEditSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QLineEdit *lineEdit = qobject_cast<QLineEdit *>(widget)) {
+      // get size of the font
+      int labelSize = lineEdit->font().pointSize();
+      reference_lineEditSize = std::max(reference_lineEditSize, labelSize);
+    }
+  }
+  int reference_tableViewSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QTableView *tableView = qobject_cast<QTableView *>(widget)) {
+      // get size of the font
+      int labelSize = tableView->font().pointSize();
+      reference_tableViewSize = std::max(reference_tableViewSize, labelSize);
+    }
+  }
+  reference_labelSize -= decrement;
+  reference_buttonSize -= decrement;
+  reference_lineEditSize -= decrement;
+  reference_tableViewSize -= decrement;
 
   // Iterate through all widgets in the application
   for (QWidget *widget : QApplication::allWidgets()) {
     // Check if the widget contains text
     if (QLabel *label = qobject_cast<QLabel *>(widget)) {
+      // get size of the font
       label->setFont(
-          QFont("Arial", windowWidth / 50));  // Set font size for QLabel
+          QFont("Arial", reference_labelSize));  // Set font size for QLabel
     } else if (QPushButton *button = qobject_cast<QPushButton *>(widget)) {
-      button->setFont(
-          QFont("Arial", windowWidth / 50));  // Set font size for QPushButton
+      button->setFont(QFont(
+          "Arial", reference_buttonSize));  // Set font size for QPushButton
     } else if (QLineEdit *lineEdit = qobject_cast<QLineEdit *>(widget)) {
-      lineEdit->setFont(
-          QFont("Arial", windowWidth / 50));  // Set font size for QLineEdit
+      lineEdit->setFont(QFont(
+          "Arial", reference_lineEditSize));  // Set font size for QLineEdit
     } else if (QTableView *tableView = qobject_cast<QTableView *>(widget)) {
-      int fontSize = tableView->size().width() / 60;
-      tableView->setFont(
-          QFont("Arial", fontSize));  // Set font size for QTableView
+      tableView->setFont(QFont(
+          "Arial", reference_tableViewSize));  // Set font size for QTableView
       tableView->resizeColumnsToContents();
     }
-
-    // Add more conditions for other text-containing widgets as needed
   }
 }
+void MainWindow::increaseSize() {
+  int increment = 2;
 
-void MainWindow::startTextChangedTimer() {
-  // If the timer is running, stop it and start again
-  if (textChangedTimer->isActive()) textChangedTimer->stop();
-
-  // Start the timer with the desired delay
-  textChangedTimer->start(1000);
-}
-
-void MainWindow::updateTable() {
-  std::vector<KeywordQueryResult> kqr_vec =
-      searchKeywords(this->textBox->text().toStdString());
-
-  // Clear previous data from the model
-  model->removeRows(0, model->rowCount());
-  size_t maxKeywords = maxTabRows;
-
-  // Add new data to the model
-  for (const auto &kqr : kqr_vec) {
-    if (maxKeywords-- == 0) break;
-
-    QList<QStandardItem *> rowItems;
-    rowItems << new QStandardItem(QString::fromStdString(kqr._word));
-
-    if (!((indexTerm->isChecked() && kqr._type.count(KeywordType::IndexTerm)) ||
-          (authorKeyword->isChecked() &&
-           kqr._type.count(KeywordType::AuthorKeyword)) ||
-          (area->isChecked() && kqr._type.count(KeywordType::SubjectArea)))) {
-      continue;
-    }
-
-    // build the string for the type
-    std::string typeStr;
-    for (auto type : kqr._type) {
-      typeStr += toString(type) + ", ";
-    }
-
-    // Remove the trailing comma and space
-    typeStr = typeStr.substr(0, typeStr.size() - 2);
-
-    rowItems << new QStandardItem(QString::fromStdString(typeStr));
-
-    // new integer item for citations
-    auto citationItem = new QStandardItem();
-    citationItem->setData(static_cast<qlonglong>(kqr._totalCitations),
-                          Qt::DisplayRole);  // Cast to qlonglong
-
-    rowItems << citationItem;
-
-    // new double item for z-score
-    auto zScoreItem = new QStandardItem();
-    zScoreItem->setData(kqr._zScore, Qt::DisplayRole);
-    // set color to green if z-score is greater than 1
-    if (kqr._zScore >= 1.f) {
-      zScoreItem->setData(QColor(Qt::darkGreen), Qt::BackgroundRole);
-    } else if (kqr._zScore < -1.f) {
-      zScoreItem->setData(QColor(Qt::darkRed), Qt::BackgroundRole);
-    }
-    rowItems << zScoreItem;
-    model->appendRow(rowItems);
-  }
-
-  // Resize columns to fit contents
-  tableView->resizeColumnsToContents();
-
-  // Sort the table by the third column in descending order of citations
-  tableView->sortByColumn(2, Qt::DescendingOrder);
-  setSliderLimits(kqr_vec.size());
-}
-void MainWindow::openChartWindow(const QString &keyword) {
-  openDB();
-  KeywordQueryResult kqr = getKQR(keyword.toStdString());
-
-  auto min_max = std::minmax_element(
-      kqr._yearToCitations.begin(), kqr._yearToCitations.end(),
-      [](const auto &a, const auto &b) { return a.first < b.first; });
-
-  // Fix missing data with zeros
-  for (size_t year = min_max.first->first; year <= min_max.second->first;
-       ++year) {
-    if (kqr._yearToCitations.count(year) == 0) {
-      kqr._yearToCitations.emplace(year, 0);
+  int reference_labelSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QLabel *label = qobject_cast<QLabel *>(widget)) {
+      // get size of the font
+      int labelSize = label->font().pointSize();
+      reference_labelSize = std::max(reference_labelSize, labelSize);
     }
   }
-
-  // Create series for citation data, rate of change, and impact factor
-  QLineSeries *citationSeries = new QLineSeries();
-  QLineSeries *impactFactorSeries = new QLineSeries();
-  QLineSeries *numberOfPapersSeries = new QLineSeries();
-
-  // Set point labels format and make them visible for citationSeries
-  citationSeries->setPointLabelsFormat("@yPoint");
-  citationSeries->setPointLabelsVisible(true);
-  citationSeries->setPointLabelsColor(Qt::black);
-  citationSeries->setPointLabelsClipping(false);
-  citationSeries->setPointLabelsFont(QFont("Arial", 15));
-
-  // Set point labels format and make them visible for impactFactorSeries
-  impactFactorSeries->setPointLabelsFormat("@yPoint");
-  impactFactorSeries->setPointLabelsVisible(true);
-  impactFactorSeries->setPointLabelsColor(Qt::black);
-  impactFactorSeries->setPointLabelsClipping(false);
-  impactFactorSeries->setPointLabelsFont(QFont("Arial", 15));
-
-  // Set point labels format and make them visible for numberOfPapersSeries
-  numberOfPapersSeries->setPointLabelsFormat("@yPoint");
-  numberOfPapersSeries->setPointLabelsVisible(true);
-  numberOfPapersSeries->setPointLabelsColor(Qt::black);
-  numberOfPapersSeries->setPointLabelsClipping(false);
-  numberOfPapersSeries->setPointLabelsFont(QFont("Arial", 15));
-
-  size_t maxCitations = 0;
-  size_t maxPapers = 0;
-
-  for (const auto &[year, citations] : kqr._yearToCitations) {
-    if (year == getCurrentYear()) {
-      continue;  // Skip the current year
+  int reference_buttonSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QPushButton *button = qobject_cast<QPushButton *>(widget)) {
+      // get size of the font
+      int labelSize = button->font().pointSize();
+      reference_buttonSize = std::max(reference_buttonSize, labelSize);
     }
-
-    citationSeries->append(year, citations);
-    maxCitations = std::max(maxCitations, citations);
-
-    size_t newPapersThisYear =
-        kqr._yearToPapers.count(year) ? kqr._yearToPapers.at(year).size() : 0;
-    numberOfPapersSeries->append(year, newPapersThisYear);
-    maxPapers = std::max(maxPapers, newPapersThisYear);
-
-    double impactFactor = 0;
-    if (year - min_max.first->first >= 2) {
-      size_t nPapersOneYearBefore = kqr._yearToPapers.count(year - 1)
-                                        ? kqr._yearToPapers.at(year - 1).size()
-                                        : 0;
-      size_t nPapersTwoYearsBefore = kqr._yearToPapers.count(year - 2)
-                                         ? kqr._yearToPapers.at(year - 2).size()
-                                         : 0;
-      messageErrorIf(
-          kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears.empty(),
-          "Missing data for impact factor calculation");
-      if (nPapersOneYearBefore + nPapersTwoYearsBefore > 0 &&
-          kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears.count(
-              year)) {
-        impactFactor =
-            static_cast<double>(
-                kqr._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
-                    .at(year)) /
-            (nPapersOneYearBefore + nPapersTwoYearsBefore);
-      }
-    }
-    impactFactorSeries->append(year, impactFactor);
   }
-
-  // Create a chart and set the series
-  QChart *chart = new QChart();
-  chart->addSeries(citationSeries);
-  chart->addSeries(numberOfPapersSeries);
-  chart->addSeries(impactFactorSeries);  // Add the impact factor series
-  chart->legend()->setVisible(true);
-  chart->legend()->setAlignment(
-      Qt::AlignBottom);  // Position legend at the bottom
-
-  QValueAxis *axisX = new QValueAxis;
-  axisX->setLabelFormat("%d");
-  axisX->setTitleText("Year");
-  axisX->setRange(min_max.first->first, min_max.second->first - 1);
-  axisX->setTickCount(getCurrentYear() - 1 - min_max.first->first + 1);
-  chart->addAxis(axisX, Qt::AlignBottom);
-  citationSeries->attachAxis(axisX);
-  impactFactorSeries->attachAxis(
-      axisX);  // Attach the impact factor series to the axis
-  numberOfPapersSeries->attachAxis(axisX);
-
-  QValueAxis *axisY = new QValueAxis;
-  axisY->setLabelFormat("%d");
-  axisY->setTitleText("Citations");
-  axisY->setRange(
-      0, std::max(maxCitations, maxPapers) + 1);  // Set the range of the
-  // axis
-  chart->addAxis(axisY, Qt::AlignLeft);
-  citationSeries->attachAxis(axisY);
-
-  QValueAxis *axisY2 = new QValueAxis;
-  axisY2->setLabelFormat("%.2f");
-  axisY2->setTitleText("Impact Factor");
-  chart->addAxis(axisY2, Qt::AlignRight);
-  impactFactorSeries->attachAxis(
-      axisY2);  // Attach the impact factor series to the new axis
-
-  citationSeries->setName("Citations");
-  numberOfPapersSeries->setName("New papers");
-  impactFactorSeries->setName("Impact Factor");
-
-  // Remove the title of the chart
-  chart->setTitle(keyword);
-
-  // Create a chart view and set the chart
-  QChartView *chartView = new QChartView(chart);
-  chartView->setRenderHint(QPainter::Antialiasing);
-
-  // Add the chart view as a new tab
-  int tabIndex = tabWidget->addTab(chartView, keyword);
-  tabWidget->setCurrentIndex(tabIndex);
-  tabWidget->show();  // Ensure the tab widget is shown when charts are added
-
-  // printTimeSeries(numberOfPapersSeries);
-  // printTimeSeries(citationSeries);
-  // printTimeSeries(impactFactorSeries);
-}
-void MainWindow::openListOfPapers(const std::string &keyword) {
-  // Fetch the papers using the keyword
-  std::vector<DBPayload> papers = getPapers(keyword);
-
-  // Create a new QTableWidget
-  QTableWidget *table = new QTableWidget();
-  table->setRowCount(static_cast<int>(papers.size()));
-  table->setColumnCount(
-      7);  // DOI, Title, Authors, Year, Total Citations, Keywords, Abstract
-
-  // Set the column headers
-  QStringList headers;
-  headers << "DOI"
-          << "Title"
-          << "Authors"
-          << "Year"
-          << "Total Citations"
-          << "Keywords"
-          << "Abstract";
-  table->setHorizontalHeaderLabels(headers);
-
-  // Populate the table with paper data
-  int row = 0;
-  for (const DBPayload &paper : papers) {
-    // DOI
-    table->setItem(row, 0,
-                   new QTableWidgetItem(QString::fromStdString(paper.doi)));
-
-    // Title
-    table->setItem(row, 1,
-                   new QTableWidgetItem(QString::fromStdString(paper.title)));
-
-    // Authors
-    table->setItem(
-        row, 2,
-        new QTableWidgetItem(QString::fromStdString(paper.authors_list)));
-
-    // Year
-    table->setItem(row, 3, new QTableWidgetItem(QString::number(paper.year)));
-
-    // Total Citations
-    table->setItem(
-        row, 4, new QTableWidgetItem(QString::number(paper.total_citations)));
-
-    // Keywords (combining index terms and author keywords)
-    std::string keywords;
-    std::set<std::string> unique_keywords;
-    for (const auto &index_term : paper.index_terms) {
-      unique_keywords.insert(index_term);
+  int reference_lineEditSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QLineEdit *lineEdit = qobject_cast<QLineEdit *>(widget)) {
+      // get size of the font
+      int labelSize = lineEdit->font().pointSize();
+      reference_lineEditSize = std::max(reference_lineEditSize, labelSize);
     }
-    for (const auto &author_keyword : paper.author_keywords) {
-      unique_keywords.insert(author_keyword);
-    }
-    // Remove trailing comma and space
-    if (!keywords.empty()) {
-      keywords = keywords.substr(0, keywords.size() - 2);
-    }
-    for (const auto &keyword : unique_keywords) {
-      keywords += keyword + ", ";
-    }
-    if (!keywords.empty()) {
-      keywords = keywords.substr(0, keywords.size() - 2);
-    }
-    table->setItem(row, 5,
-                   new QTableWidgetItem(QString::fromStdString(keywords)));
-
-    // Abstract
-    table->setItem(
-        row, 6, new QTableWidgetItem(QString::fromStdString(paper.abstract)));
-
-    row++;
   }
-
-  // Adjust table properties
-  table->resizeColumnsToContents();
-  table->setEditTriggers(QAbstractItemView::NoEditTriggers);  // Disable editing
-
-  // Create a layout for the new tab
-  QWidget *tab = new QWidget();
-  QVBoxLayout *layout = new QVBoxLayout();
-  layout->addWidget(table);
-  tab->setLayout(layout);
-
-  // Add the new tab to the tabWidget
-  QString tabTitle = QString::fromStdString("Papers for keyword: " + keyword);
-  int tabIndex = tabWidget->addTab(tab, tabTitle);
-  tabWidget->setCurrentIndex(tabIndex);
-  tabWidget->show();
-
-  // Connect the table view click signal to the slot
-  connect(table, &QTableWidget::clicked, this,
-          &MainWindow::onPapersTableClicked);
-}
-
-void MainWindow::onPapersTableClicked(const QModelIndex &index) {
-  // Retrieve the sender widget (the QTableWidget that was clicked)
-  QTableWidget *table = qobject_cast<QTableWidget *>(sender());
-
-  // Ensure the table exists and the index is valid
-  if (!table || !index.isValid()) return;
-
-  // Retrieve the selected row and column
-  int row = index.row();
-  int column = index.column();
-
-  // If the clicked column is the abstract column (assuming abstract is in
-  // column 6)
-  if (true || column == 6) {
-    // Get the abstract from the abstract column
-    QString abstract = table->item(row, 6)->text();
-
-    // Create a new QWidget for the new tab
-    QWidget *tab = new QWidget();
-    QVBoxLayout *layout = new QVBoxLayout();
-
-    // Create a QLabel to display the abstract text in big font
-    QLabel *abstractLabel = new QLabel(abstract);
-    abstractLabel->setWordWrap(true);  // Wrap text to fit the widget
-    QFont font = abstractLabel->font();
-    font.setPointSize(27);  // Set a larger font size
-    abstractLabel->setFont(font);
-
-    // Create a QPushButton to copy the abstract to clipboard
-    QPushButton *copyButton = new QPushButton("Copy Abstract to Clipboard");
-
-    // Connect the button's clicked signal to a lambda that copies the abstract
-    connect(copyButton, &QPushButton::clicked, this, [abstract]() {
-      QClipboard *clipboard = QApplication::clipboard();
-      clipboard->setText(abstract);  // Copy the abstract text to the clipboard
-    });
-
-    // Add the label and button to the layout
-    layout->addWidget(abstractLabel);
-    layout->addWidget(copyButton);
-    tab->setLayout(layout);
-
-    // Add the new tab to the tabWidget with a title based on the paper's title
-    // or DOI
-    //    QString doi = table->item(row, 0)->text();  // Assuming DOI is in
-    //    column 0
-    QString title =
-        table->item(row, 1)->text();  // Assuming title is in column 1
-    QString tabTitle = "Abstract - " + title;
-    // Add the table as a new tab
-    int tabIndex = tabWidget->addTab(tab, tabTitle);
-    tabWidget->setCurrentIndex(tabIndex);
-    tabWidget->show();
-  }
-}
-
-void MainWindow::onTableClicked(const QModelIndex &index) {
-  if (index.isValid()) {
-    if (index.column() == 0) {  // Check if the first column is clicked
-      openListOfPapers(
-          model->data(index.siblingAtColumn(0)).toString().toStdString());
-    } else if (index.column() == 2) {  // Check if the third column is clicked
-      openChartWindow(model->data(index.siblingAtColumn(0)).toString());
+  int reference_tableViewSize = 0;
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (QTableView *tableView = qobject_cast<QTableView *>(widget)) {
+      // get size of the font
+      int labelSize = tableView->font().pointSize();
+      reference_tableViewSize = std::max(reference_tableViewSize, labelSize);
     }
-
-    adjustFontSizes();
   }
-}
+  reference_labelSize += increment;
+  reference_buttonSize += increment;
+  reference_lineEditSize += increment;
+  reference_tableViewSize += increment;
 
-void printTimeSeries(QLineSeries *series) {
-  for (int i = 0; i < series->count(); ++i) {
-    QPointF point = series->at(i);
-    std::cout << point.x() << " " << point.y() << std::endl;
-  }
-}
-
-void MainWindow::removeSelectedRows() {
-  QModelIndexList selectedIndexes = tableView->selectionModel()->selectedRows();
-
-  // Remove selected rows from the model
-  for (int i = selectedIndexes.size() - 1; i >= 0; --i) {
-    auto row = selectedIndexes.at(i).row();
-    QString word = model->data(model->index(row, 0)).toString();
-    removeKQR(getKQR(word.toStdString()));
-    model->removeRow(row);
+  // Iterate through all widgets in the application
+  for (QWidget *widget : QApplication::allWidgets()) {
+    // Check if the widget contains text
+    if (QLabel *label = qobject_cast<QLabel *>(widget)) {
+      // get size of the font
+      label->setFont(
+          QFont("Arial", reference_labelSize));  // Set font size for QLabel
+    } else if (QPushButton *button = qobject_cast<QPushButton *>(widget)) {
+      button->setFont(QFont(
+          "Arial", reference_buttonSize));  // Set font size for QPushButton
+    } else if (QLineEdit *lineEdit = qobject_cast<QLineEdit *>(widget)) {
+      lineEdit->setFont(QFont(
+          "Arial", reference_lineEditSize));  // Set font size for QLineEdit
+    } else if (QTableView *tableView = qobject_cast<QTableView *>(widget)) {
+      tableView->setFont(QFont(
+          "Arial", reference_tableViewSize));  // Set font size for QTableView
+      tableView->resizeColumnsToContents();
+    }
   }
 }
 

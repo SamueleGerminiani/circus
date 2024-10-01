@@ -6,9 +6,9 @@ SET(NAME gui)
 # Sources.
 #############################################
 
-qt6_wrap_cpp(moc_sources src/gui.cc include/gui.hh)
+qt6_wrap_cpp(moc_sources src/gui.cc src/keywordsTable.cc src/papersTable.cc include/gui.hh)
 
-SET(GUI_SRC src/gui.cc)
+SET(GUI_SRC src/gui.cc src/keywordsTable.cc src/papersTable.cc)
 list(APPEND GUI_SRC ${moc_sources})
 
 #############################################

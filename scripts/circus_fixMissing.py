@@ -28,7 +28,7 @@ def get_citations_per_year(doi_eid, start_year, end_year):
         start=start_year,
         end=end_year,
         id_type=idType,
-        refresh=True,
+        refresh=False,
     )
 
     return co.cc[0]

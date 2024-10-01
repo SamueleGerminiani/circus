@@ -5,6 +5,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMainWindow>
+#include <QSplitter>
 #include <QStandardItemModel>  // Include QStandardItemModel for the table
 #include <QStringListModel>
 #include <QTableView>
@@ -26,30 +27,31 @@ class MainWindow : public QMainWindow {
   void openChartWindow(const QString &keyword);
   void openListOfPapers(const std::string &keyword);
   void keyPressEvent(QKeyEvent *event) override;
-  void adjustFontSizes();
 
   void resizeEvent(QResizeEvent *event) override;
   void addUnionOfSelectedRows();
   void removeSelectedRows();
   void onMaxRowsSliderValueChanged(int value);
   void onPapersTableClicked(const QModelIndex &index);
+  void decreaseSize();
+  void increaseSize();
 
  private:
   void setSliderLimits(size_t max);
 
-  QLineEdit *textBox;
-  QTableView *tableView;
-  QStandardItemModel *model;
-  QTimer *textChangedTimer;
-  QTabWidget *tabWidget;
-  QCheckBox *indexTerm;
-  QCheckBox *area;
-  QCheckBox *authorKeyword;
+  QLineEdit *keySearch_textBox = nullptr;
+  QTableView *keywords_tableView = nullptr;
+  QTimer *textChanged_timer = nullptr;
+  QTabWidget *tabWidget = nullptr;
+  QStandardItemModel *keywordsTab_model = nullptr;
+  QCheckBox *indexTerm_checkbox = nullptr;
+  QCheckBox *area_checkbox = nullptr;
+  QCheckBox *authorKeyword_checkbox = nullptr;
+  QSplitter *splitter = nullptr;
+  QLabel *min_label = nullptr;
+  QLabel *max_label = nullptr;
+  QSlider *maxRows_slider = nullptr;
 
-  QLabel *minLabel;
-  QLabel *maxLabel;
-
-  QSlider *maxRowsSlider;
   int maxTabRows = 1000;  // Default maximum number of rows
 };
 
