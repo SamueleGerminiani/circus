@@ -12,6 +12,7 @@
 #include "dbUtils.hh"
 #include "globals.hh"
 #include "message.hh"
+#include "misc.hh"
 
 SQLite::Database db(clc::dbFile, SQLite::OPEN_READWRITE);
 static std::vector<KeywordQueryResult> all_words;
@@ -369,9 +370,16 @@ DBPayload toDBPayload(const bibtex::BibTeXEntry& entry) {
         payload.citations.emplace_back(std::stoi(citation_pair[0]),
                                        std::stoi(citation_pair[1]));
       }
-      for (const auto& citation : payload.citations) {
-        payload.total_citations += citation.second;
+      // fill only if total_citations is not provided
+      if (payload.total_citations == 0) {
+        for (const auto& citation : payload.citations) {
+          payload.total_citations += citation.second;
+        }
       }
+      // fill only if per_year_citations is not provided
+    } else if (field.first == "total_citations" &&
+               payload.total_citations == 0) {
+      payload.total_citations = safeStoull(field.second.front());
     } else if (field.first == "index_terms") {
       payload.index_terms = splitFix(field.second.front(), ',');
     } else if (field.first == "author_keywords") {
@@ -408,18 +416,30 @@ KeywordQueryResult getKQR(const std::string& keyword) {
 std::vector<KeywordQueryResult> queryAllKeywords() {
   std::unordered_map<std::string, KeywordQueryResult> word_to_kqr;
 
+  // Set to keep track of DOI-keyword pairs to avoid duplicates when the same
+  // keyword is both an author keyword, index term or subject area
+  std::set<std::pair<std::string, std::string>> taken_doi_keyword;
+
   try {
     // Query for all author keywords and calculate total citations
     {
-      SQLite::Statement query(db,
-                              "SELECT author_keyword, paper.doi, paper.year "
-                              "FROM author_keyword_paper join "
-                              "paper on author_keyword_paper.doi = paper.doi");
+      SQLite::Statement query(
+          db,
+          "SELECT author_keyword, paper.doi, paper.year, paper.total_citations "
+          "FROM author_keyword_paper join "
+          "paper on author_keyword_paper.doi = paper.doi");
 
       while (query.executeStep()) {
         std::string keyword = query.getColumn(0).getString();
         std::string doi = query.getColumn(1).getString();
+        word_to_kqr[keyword]._type.insert(KeywordType::AuthorKeyword);
+        if (taken_doi_keyword.count({doi, keyword})) {
+          continue;
+        } else {
+          taken_doi_keyword.insert({doi, keyword});
+        }
         int pubYear = query.getColumn(2).getInt();
+        int totalCitations = query.getColumn(3).getInt();
 
         // Query for citations associated with the DOI
         SQLite::Statement query_citations(
@@ -429,7 +449,6 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t year = query_citations.getColumn(0).getInt();
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
-          word_to_kqr[keyword]._totalCitations += citations;
           if (year == pubYear + 1 || year == pubYear + 2) {
             word_to_kqr[keyword]
                 ._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
@@ -437,8 +456,8 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           }
         }
 
+        word_to_kqr[keyword]._totalCitations += totalCitations;
         word_to_kqr[keyword]._yearToPapers[pubYear].insert(doi);
-        word_to_kqr[keyword]._type.insert(KeywordType::AuthorKeyword);
         word_to_kqr[keyword]._papers.insert(doi);
         // repeated to avoid checking for empty string
         word_to_kqr[keyword]._word = keyword;
@@ -447,14 +466,22 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
 
     //// Query for all index terms and calculate total citations
     {
-      SQLite::Statement query(db,
-                              "SELECT index_term, paper.doi, paper.year "
-                              "FROM index_term_paper join "
-                              "paper on index_term_paper.doi = paper.doi");
+      SQLite::Statement query(
+          db,
+          "SELECT index_term, paper.doi, paper.year, paper.total_citations "
+          "FROM index_term_paper join "
+          "paper on index_term_paper.doi = paper.doi");
       while (query.executeStep()) {
         std::string keyword = query.getColumn(0).getString();
         std::string doi = query.getColumn(1).getString();
+        word_to_kqr[keyword]._type.insert(KeywordType::IndexTerm);
+        if (taken_doi_keyword.count({doi, keyword})) {
+          continue;
+        } else {
+          taken_doi_keyword.insert({doi, keyword});
+        }
         int pubYear = query.getColumn(2).getInt();
+        int totalCitations = query.getColumn(3).getInt();
 
         // Query for citations associated with the DOI
         SQLite::Statement query_citations(
@@ -464,30 +491,37 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t year = query_citations.getColumn(0).getInt();
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
-          word_to_kqr[keyword]._totalCitations += citations;
           if (year == pubYear + 1 || year == pubYear + 2) {
             word_to_kqr[keyword]
                 ._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
                     [year] += citations;
           }
         }
+        word_to_kqr[keyword]._totalCitations += totalCitations;
         word_to_kqr[keyword]._yearToPapers[pubYear].insert(doi);
         word_to_kqr[keyword]._papers.insert(doi);
-        word_to_kqr[keyword]._type.insert(KeywordType::IndexTerm);
         word_to_kqr[keyword]._word = keyword;
       }
     }
 
     // Query for all subject areas and calculate total citations
     {
-      SQLite::Statement query(db,
-                              "SELECT area, paper.doi, paper.year "
-                              "FROM area_paper join "
-                              "paper on area_paper.doi = paper.doi");
+      SQLite::Statement query(
+          db,
+          "SELECT area, paper.doi, paper.year, paper.total_citations "
+          "FROM area_paper join "
+          "paper on area_paper.doi = paper.doi");
       while (query.executeStep()) {
         std::string keyword = query.getColumn(0).getString();
         std::string doi = query.getColumn(1).getString();
+        word_to_kqr[keyword]._type.insert(KeywordType::SubjectArea);
+        if (taken_doi_keyword.count({doi, keyword})) {
+          continue;
+        } else {
+          taken_doi_keyword.insert({doi, keyword});
+        }
         size_t pubYear = query.getColumn(2).getInt();
+        size_t totalCitations = query.getColumn(3).getInt();
 
         // Query for citations associated with the DOI
         SQLite::Statement query_citations(
@@ -497,16 +531,15 @@ std::vector<KeywordQueryResult> queryAllKeywords() {
           size_t year = query_citations.getColumn(0).getInt();
           size_t citations = query_citations.getColumn(1).getInt();
           word_to_kqr[keyword]._yearToCitations[year] += citations;
-          word_to_kqr[keyword]._totalCitations += citations;
           if (year == pubYear + 1 || year == pubYear + 2) {
             word_to_kqr[keyword]
                 ._yearToCitationInYearOfPapersPublishedThePreviousTwoYears
                     [year] += citations;
           }
         }
+        word_to_kqr[keyword]._totalCitations += totalCitations;
         word_to_kqr[keyword]._yearToPapers[pubYear].insert(doi);
         word_to_kqr[keyword]._papers.insert(doi);
-        word_to_kqr[keyword]._type.insert(KeywordType::SubjectArea);
         word_to_kqr[keyword]._word = keyword;
       }
     }

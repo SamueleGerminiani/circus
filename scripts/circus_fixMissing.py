@@ -120,6 +120,15 @@ def main():
     parser.add_argument(
         "-out", "--output", required=True, help="Output .bib file"
     )
+    parser.add_argument(
+        "-npc",
+        "--no-per-year-citations",
+        required=False,
+        # no argument,
+        action="store_true",
+        help="Do not retrieve citations per year (useful if you dont have the Citation Overview scopus API)",
+    )
+
     args = parser.parse_args()
 
     input_files = args.input
@@ -149,6 +158,7 @@ def main():
         "index_terms",
         "subject_areas",
         "per_year_citations",
+        "total_citations",
     ]
 
     for entry in result_database.entries:
@@ -197,8 +207,15 @@ def main():
                 elif field == "year":
                     if retrieved_data.coverDate:
                         entry[field] = retrieved_data.coverDate.split("-")[0]
+
+                elif field == "total_citations":
+                    if retrieved_data.citedby_count:
+                        entry[field] = str(retrieved_data.citedby_count)
                 elif field == "per_year_citations":
-                    if retrieved_data.coverDate:
+                    if (
+                        retrieved_data.coverDate
+                        and not args.no_per_year_citations
+                    ):
                         year = retrieved_data.coverDate.split("-")[0]
                         doi_eid = (retrieved_data.doi, retrieved_data.eid)
                         pyc = get_citations_per_year(
