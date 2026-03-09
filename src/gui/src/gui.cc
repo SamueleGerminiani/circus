@@ -199,6 +199,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
 }
 
 MainWindow::~MainWindow() {}
+
 void MainWindow::resizeEvent(QResizeEvent *event) {
   QMainWindow::resizeEvent(event);
 }
@@ -332,3 +333,4 @@ void runGui(int argc, char *argv[]) {
   messageInfo("GUI closed");
 }
 
+#include "moc_gui.cpp"

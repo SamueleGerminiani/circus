@@ -8,13 +8,16 @@
 #include <unordered_set>
 
 #include "DBPayload.hh"
+#include "SQLiteCpp/Database.h"
 #include "bibtexentry.hpp"
 #include "dbUtils.hh"
 #include "globals.hh"
 #include "message.hh"
 #include "misc.hh"
 
-SQLite::Database db(clc::dbFile, SQLite::OPEN_READWRITE);
+// Creates a harmless, temporary database in RAM that gets overwritten later
+SQLite::Database db(":memory:", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+
 static std::vector<KeywordQueryResult> all_words;
 
 void addKQR(const KeywordQueryResult& kqr) { all_words.push_back(kqr); }

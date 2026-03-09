@@ -7,6 +7,24 @@ from pybliometrics.scopus import CitationOverview
 import pandas as pd
 import re
 from datetime import datetime
+from pprint import pprint
+
+
+def as_list(item):
+    """Return *item* as a list, even if it's already a list or just a dict."""
+    return item if isinstance(item, list) else [item]
+
+
+def get_years_count(co):
+    # 1. Normalise both structures so they are always lists
+    years = [
+        int(h["$"]) for h in as_list(co._citeCountHeader["columnHeading"])
+    ]
+    counts = [int(c["$"]) for c in as_list(co._citeInfoMatrix[0]["cc"])]
+
+    # 2. Zip together (zip truncates to the shorter length in case Scopus
+    #    ever returns more counts than headings, or vice-versa)
+    return dict(zip(years, counts))
 
 
 def get_citations_per_year(doi_eid, start_year, end_year):
@@ -31,7 +49,34 @@ def get_citations_per_year(doi_eid, start_year, end_year):
         refresh=False,
     )
 
-    return co.cc[0]
+    # pprint(vars(co))
+
+    if co._citeCountHeader.get("columnHeading") is None:
+        print("No citations found for this entry")
+        # make the year list
+        years = list(range(int(start_year), int(end_year) + 1))
+        # make the counts list
+        counts = [0] * len(years)
+        return dict(zip(years, counts)).items()
+
+    # Check if columnHeading is structers of couples of singles
+    if not isinstance(co._citeCountHeader["columnHeading"], list):
+        # make a list with on element
+        years = [int(co._citeCountHeader["columnHeading"])]
+    else:
+        years = [int(x["$"]) for x in co._citeCountHeader["columnHeading"]]
+
+    if not isinstance(co._citeCountHeader["columnTotal"], list):
+        # make a list with on element
+        counts = [int(co._citeCountHeader["columnTotal"])]
+    else:
+        counts = [int(x["$"]) for x in co._citeCountHeader["columnTotal"]]
+
+    # Map each year to its citation count
+    citations_per_year = dict(zip(years, counts))
+
+    print(citations_per_year)
+    return citations_per_year.items()
 
 
 def clean(input_string):

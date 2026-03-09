@@ -147,6 +147,8 @@ void MainWindow::onPapersTableClicked(const QModelIndex &index) {
     font.setPointSize(abstractLabel->fontInfo().pointSize() *
                       2);  // Set a larger font size
     abstractLabel->setFont(font);
+    // allow text selection
+    abstractLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
     // Create a QPushButton to copy the abstract to clipboard
     QPushButton *copyButton = new QPushButton("Copy Abstract to Clipboard");
